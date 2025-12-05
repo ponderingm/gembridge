@@ -56,6 +56,30 @@
 
     // Check for pending job on load
     const pendingJobJson = localStorage.getItem('gembridge_pending_job');
+
+    // Login Detection
+    function checkLoginState() {
+        if (window.location.hostname.includes('accounts.google.com')) {
+            notifyLoginRequired();
+        }
+    }
+
+    function notifyLoginRequired() {
+        const LAST_NOTIFY_KEY = 'gembridge_last_login_notify';
+        const COOLDOWN = 60 * 60 * 1000; // 1 hour
+
+        const lastNotify = localStorage.getItem(LAST_NOTIFY_KEY);
+        if (lastNotify && (Date.now() - parseInt(lastNotify)) < COOLDOWN) {
+            updateStatus("Login required (Notification suppressed)");
+            return;
+        }
+
+        reportError("⚠️ **Action Required**\nGoogle Login Required. Please access the browser and sign in.");
+        localStorage.setItem(LAST_NOTIFY_KEY, Date.now().toString());
+    }
+
+    checkLoginState();
+
     if (pendingJobJson) {
         const job = JSON.parse(pendingJobJson);
         updateStatus(`Resuming Job ${job.id} after navigation...`);
