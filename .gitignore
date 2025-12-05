@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Environment variables
+.env
+
+# Docker
+docker-compose.override.yml
+
+# Project specific
+server/data/
+browser-config/
+
+# OS
+.DS_Store
+Thumbs.db

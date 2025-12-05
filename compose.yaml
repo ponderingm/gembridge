@@ -4,11 +4,13 @@ services:
     container_name: gemini-api
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "8005:8000"
     env_file:
       - .env
     environment:
       - TZ=${TZ:-Asia/Tokyo}
+    volumes:
+      - ./server/data:/app/data
 
   gemini-browser:
     image: lscr.io/linuxserver/chromium:latest
@@ -18,6 +20,7 @@ services:
       - seccomp:unconfined # Required for modern Chrome
     ports:
       - "3005:3000"
+      - "3006:3001"
     volumes:
       - ./browser-config:/config
     environment:
@@ -28,4 +31,3 @@ services:
     shm_size: "1gb" # Prevent crashes
     depends_on:
       - gemini-api
-

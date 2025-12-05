@@ -27,31 +27,96 @@ docker compose up -d --build
 
 ### 3. ブラウザ設定 (初回のみ)
 
-1. ブラウザ (`http://<pi-ip>:3005`) でGoogleにログインし、Tampermonkeyを設定してください。
+1. ブラウザで `https://<raspberry-pi-ip>:3006` にアクセスします。（警告が出ますが「詳細設定」から「進む」を選択して無視してください）
 2. コンテナ内のChromiumで `https://gemini.google.com` にアクセスし、Googleアカウントでログインします。
 3. Chromeウェブストアから **Tampermonkey** をインストールします。
 4. Tampermonkeyのダッシュボードを開き、`userscript.js` の内容を新規スクリプトとして登録します。
    - **注意**: UserScript内のAPI URLは `http://gemini-api:8000` のままで問題ありません（Docker内部ネットワークを使用するため）。
 
-## 使用方法
+## 🚀 Usage
 
-### 画像生成リクエスト
+### 1. Internal API Access (Docker Network)
+This system is designed to be used by other containers within the same Docker network (e.g., managed by Coolify).
+Access the API using the service name `gemini-api` on port `8000`.
 
-APIサーバーに対してPOSTリクエストを送信します。
+**Base URL:** `http://gemini-api:8000`
 
-```bash
-curl -X POST "http://<raspberry-pi-ip>:8000/api/job" \
-     -H "Content-Type: application/json" \
-     -d '{"prompt": "A futuristic city with flying cars, cyberpunk style"}'
+### 2. API Endpoints
+
+#### Create a Job
+**POST** `/api/job`
+```json
+{
+  "prompt": "A futuristic city, digital art"
+}
+```
+**Response:**
+```json
+{
+  "job_id": "1",
+  "status": "queued"
+}
 ```
 
-### 動作確認
+#### Poll Job Status ( & Get Image)
+**GET** `/api/job?job_id={job_id}`
 
-1. APIにリクエストを送ると、`gemini-api` がジョブをキューに入れます。
-2. `gemini-browser` 内のUserScriptがジョブを検知し、Geminiにプロンプトを入力します。
-3. 画像が生成されると（※現状のスクリプトは画像検出ロジックが未完成です）、Discordに画像が送信されます。
+**Response (Processing):**
+```json
+{
+  "id": "1",
+  "status": "processing",
+  ...
+}
+```
 
-## 開発者向け情報
+**Response (Completed):**
+```json
+{
+  "id": "1",
+  "status": "completed",
+  "result_url": "/images/1.png",
+  "image": "<Base64 Encoded Image Data>" 
+}
+```
+*Note: The `image` field contains the full Base64 string of the generated PNG, allowing you to retrieve the image directly without a second request.*
 
-- **APIドキュメント**: `http://<raspberry-pi-ip>:8000/docs`
-- **ログ確認**: `docker compose logs -f`
+### 3. Integration Example (Python)
+Here is how another container in the same network can request an image:
+
+```python
+import requests
+import time
+import base64
+
+API_URL = "http://gemini-api:8000/api/job"
+
+# 1. Submit Job
+response = requests.post(API_URL, json={"prompt": "A cat"})
+job_id = response.json()["job_id"]
+
+# 2. Poll for Completion
+while True:
+    status_res = requests.get(f"{API_URL}?job_id={job_id}").json()
+    if status_res["status"] == "completed":
+        # 3. Decode Image
+        image_data = base64.b64decode(status_res["image"])
+        with open("result.png", "wb") as f:
+            f.write(image_data)
+        break
+    time.sleep(5)
+```
+
+## 🛠️ Development & Debugging
+
+### Accessing the Browser
+To debug the automation or sign in to Google:
+- **URL:** `https://<your-server-ip>:3006`
+- **User:** `kasm_user`
+- **Password:** `password`
+
+### Logs
+Check logs to see the automation progress:
+```bash
+docker compose logs -f gemini-api
+```
