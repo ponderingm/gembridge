@@ -26,9 +26,12 @@ os.makedirs(IMAGES_DIR, exist_ok=True)
 # Mount static files
 app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
 
+import asyncio
+
 # In-memory Job Queue
 # Structure: { "id": str, "prompt": str, "status": "pending" | "processing" | "completed" | "failed", "result_url": str, "created_at": datetime }
 job_queue: List[Dict[str, Any]] = []
+queue_lock = asyncio.Lock()
 
 class JobRequest(BaseModel):
     prompt: str
@@ -91,11 +94,42 @@ async def get_job(job_id: Optional[str] = None):
         raise HTTPException(status_code=404, detail="Job not found")
 
     # Otherwise, find the first pending job (Worker polling)
-    for job in job_queue:
-        if job["status"] == "pending":
-            job["status"] = "processing"
-            logger.info(f"Job picked up: {job['id']}")
-            return job
+    async with queue_lock:
+        # 1. Reset stale jobs (processing > 2 mins)
+        now = datetime.now()
+        for job in job_queue:
+            if job["status"] == "processing":
+                # Assuming job has a 'started_at' or we use 'created_at' if we don't track start time.
+                # Let's add 'started_at' when we pick it up.
+                # If 'started_at' is missing (legacy), we can skip or reset.
+                # For simplicity, let's just check if we can track it.
+                # Actually, let's just use a simple timeout based on last update if we had it.
+                # Since we don't have 'updated_at', let's add it or just use created_at if it's very old?
+                # No, created_at is when it was made.
+                # Let's add 'updated_at' to the job structure.
+                pass
+
+        # Real implementation:
+        # First, let's ensure we track when a job started processing.
+        
+        # Check for stale jobs
+        for job in job_queue:
+            if job["status"] == "processing":
+                updated_at = job.get("updated_at")
+                if updated_at:
+                    elapsed = (now - updated_at).total_seconds()
+                    if elapsed > 120: # 2 minutes
+                        job["status"] = "pending"
+                        job["updated_at"] = now
+                        logger.warning(f"Resetting stale job: {job['id']}")
+        
+        # Find pending job
+        for job in job_queue:
+            if job["status"] == "pending":
+                job["status"] = "processing"
+                job["updated_at"] = datetime.now()
+                logger.info(f"Job picked up: {job['id']}")
+                return job
     return {"status": "empty"}
 
 @app.post("/api/result")

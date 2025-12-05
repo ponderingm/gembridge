@@ -64,14 +64,14 @@
         processJob(job);
     } else {
         // Start polling if no pending job
-        setInterval(pollJob, POLL_INTERVAL);
+        setTimeout(pollJob, POLL_INTERVAL);
     }
 
     function pollJob() {
         updateStatus('Polling...');
         GM_xmlhttpRequest({
             method: "GET",
-            url: `${API_BASE}/job`,
+            url: `${API_BASE}/job?t=${Date.now()}`,
             onload: function (response) {
                 try {
                     const data = JSON.parse(response.responseText);
@@ -82,13 +82,16 @@
                         window.location.href = 'https://gemini.google.com/app';
                     } else {
                         updateStatus('Idle (No jobs)');
+                        setTimeout(pollJob, POLL_INTERVAL);
                     }
                 } catch (e) {
                     updateStatus(`Polling parse error: ${e.message}`);
+                    setTimeout(pollJob, POLL_INTERVAL);
                 }
             },
             onerror: function (err) {
                 updateStatus(`Polling connection error: ${JSON.stringify(err)}`);
+                setTimeout(pollJob, POLL_INTERVAL);
             }
         });
     }
@@ -219,19 +222,19 @@
                     updateStatus(`Job ${job.id} Completed! Result uploaded.`);
                     log(`Upload success: ${response.responseText}`);
                     // Resume polling after success
-                    setInterval(pollJob, POLL_INTERVAL);
+                    setTimeout(pollJob, POLL_INTERVAL);
                 },
                 onerror: function (err) {
                     reportError(`Failed to upload image: ${JSON.stringify(err)}`);
                     // Resume polling even on error
-                    setInterval(pollJob, POLL_INTERVAL);
+                    setTimeout(pollJob, POLL_INTERVAL);
                 }
             });
 
         } catch (e) {
             reportError(`Job processing failed: ${e.message}`, e.stack);
             // Resume polling on error
-            setInterval(pollJob, POLL_INTERVAL);
+            setTimeout(pollJob, POLL_INTERVAL);
         }
     }
 

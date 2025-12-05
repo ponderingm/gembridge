@@ -82,14 +82,17 @@ Access the API using the service name `gemini-api` on port `8000`.
 *Note: The `image` field contains the full Base64 string of the generated PNG, allowing you to retrieve the image directly without a second request.*
 
 ### 3. Integration Example (Python)
-Here is how another container in the same network can request an image:
+**Best Practice:** Do not hardcode the URL. Use an Environment Variable.
 
 ```python
+import os
 import requests
 import time
 import base64
 
-API_URL = "http://gemini-api:8000/api/job"
+# Read from Environment Variable (Configure this in Coolify/Docker)
+# Example: "http://192.168.50.194:8005/api/job" or "http://gemini-api:8000/api/job"
+API_URL = os.getenv("GEMINI_API_URL", "http://localhost:8005/api/job")
 
 # 1. Submit Job
 response = requests.post(API_URL, json={"prompt": "A cat"})
@@ -97,7 +100,9 @@ job_id = response.json()["job_id"]
 
 # 2. Poll for Completion
 while True:
-    status_res = requests.get(f"{API_URL}?job_id={job_id}").json()
+    status_url = f"{API_URL}?job_id={job_id}" # Note: Adjust if base URL differs
+    status_res = requests.get(status_url).json()
+    
     if status_res["status"] == "completed":
         # 3. Decode Image
         image_data = base64.b64decode(status_res["image"])
@@ -106,6 +111,11 @@ while True:
         break
     time.sleep(5)
 ```
+
+### 4. Networking Guide
+- **Same Stack**: Use `http://gemini-api:8000` (Service Name).
+- **Different Stack (Coolify)**: Use the Host IP `http://192.168.x.x:8005`.
+    - *Tip: Set this as an Environment Variable (`GEMINI_API_URL`) in your client app's Coolify settings.*
 
 ## 🛠️ Development & Debugging
 
@@ -120,3 +130,10 @@ Check logs to see the automation progress:
 ```bash
 docker compose logs -f gemini-api
 ```
+
+## 更新履歴
+
+### v1.2.1 (2025-12-05)
+- **信頼性向上**:
+  - サーバー側: `asyncio.Lock` 導入による競合状態の解消と、スタックしたジョブの自動リセット機能（2分タイムアウト）を追加。
+  - クライアント側: `setInterval` を再帰的 `setTimeout` に変更し、ポーリングの重複を防止。また、キャッシュバスティング（`?t=timestamp`）を追加して確実に最新のジョブを取得するように改善。
