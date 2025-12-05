@@ -1,0 +1,13 @@
+# Nixpacks の基本設定
+# Coolify はビルドの自動検出に Nixpacks を使用します
+# https://nixpacks.com/docs/configuration/file
+
+# 必要に応じてコメントを解除してカスタマイズしてください:
+# [phases.setup]
+# nixPkgs = ["...", "..."]
+
+# [phases.build]
+# cmds = ["..."]
+
+# [start]
+# cmd = "..."

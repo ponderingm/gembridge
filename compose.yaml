@@ -1,0 +1,31 @@
+services:
+  gemini-api:
+    build: ./server
+    container_name: gemini-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - TZ=${TZ:-Asia/Tokyo}
+
+  gemini-browser:
+    image: lscr.io/linuxserver/chromium:latest
+    container_name: gemini-browser
+    restart: unless-stopped
+    security_opt:
+      - seccomp:unconfined # Required for modern Chrome
+    ports:
+      - "3005:3000"
+    volumes:
+      - ./browser-config:/config
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ:-Asia/Tokyo}
+      - CHROME_CLI=https://gemini.google.com # Auto-open Gemini
+    shm_size: "1gb" # Prevent crashes
+    depends_on:
+      - gemini-api
+
