@@ -27,7 +27,7 @@ docker compose up -d --build
 
 ### 3. ブラウザ設定 (初回のみ)
 
-1. ブラウザで `https://<raspberry-pi-ip>:3006` にアクセスします。（警告が出ますが「詳細設定」から「進む」を選択して無視してください）
+1. ブラウザで `https://<raspberry-pi-ip>:3016` にアクセスします。（警告が出ますが「詳細設定」から「進む」を選択して無視してください）
 2. コンテナ内のChromiumで `https://gemini.google.com` にアクセスし、Googleアカウントでログインします。
 3. Chromeウェブストアから **Tampermonkey** をインストールします。
 4. Tampermonkeyのダッシュボードを開き、`userscript.js` の内容を新規スクリプトとして登録します。
@@ -122,7 +122,7 @@ while True:
 
 ### Accessing the Browser
 To debug the automation or sign in to Google:
-- **URL:** `https://<your-server-ip>:3006`
+- **URL:** `https://<your-server-ip>:3016`
 - **User:** `kasm_user`
 - **Password:** `password`
 
