@@ -66,6 +66,7 @@ Access the API using the service name `gemini-api` on port `8000`.
 {
   "id": "1",
   "status": "processing",
+  "detailed_status": "Generating Image", // Detailed progress: Navigating, Inputting, Generating, etc.
   ...
 }
 ```
@@ -141,3 +142,20 @@ docker compose logs -f gemini-api
 ### v1.2.2 (2025-12-05)
 - **再ログイン通知機能**:
   - Userscriptが `accounts.google.com` への遷移を検知した場合、Discordに「再ログインが必要です」と通知を送る機能を追加（通知抑制機能付き）。
+
+### v1.3.0 (2025-12-05)
+- **タイムアウト処理の強化**:
+  - **サーバー側**: Userscript（ブラウザ）からのポーリングが一定時間（10秒＝ポーリング間隔の2倍）途絶えた場合、ジョブを「エラー（Worker timeout）」として扱う処理を追加。
+  - **クライアント側**: 画像生成処理中もハートビート（`busy=true`）を送信し続けるように変更し、サーバー側での誤検知を防止。
+- **開発環境**:
+  - Coolify環境とのポート競合を避けるため、デフォルトのポート設定を変更（API: 8006, Browser: 3015/3016）。
+
+### v2.0.0 (2025-12-07)
+- **詳細な進捗管理機能**:
+  - `/api/progress` エンドポイントを追加し、ジョブステータスに `detailed_status` を追加。
+  - Userscriptから各ステップ（入力開始、生成中、ダウンロード中など）ごとに進捗を報告するように変更。
+- **エラー通知の強化**:
+  - サーバー側で10秒以上Userscriptの応答がない場合、Discordに「Worker timeout」通知を即座に送信するように変更。
+  - Userscriptのエラー報告時に、発生元のURLを含めるように改善。
+- **信頼性改善**:
+  - Geminiの読み込み遅延に対応するため、Userscriptの要素待機時間を20秒から60秒に延長。

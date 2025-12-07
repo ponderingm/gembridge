@@ -32,13 +32,19 @@ import asyncio
 # Structure: { "id": str, "prompt": str, "status": "pending" | "processing" | "completed" | "failed", "result_url": str, "created_at": datetime }
 job_queue: List[Dict[str, Any]] = []
 queue_lock = asyncio.Lock()
+last_worker_activity: datetime = datetime.now()
 
 class JobRequest(BaseModel):
     prompt: str
 
+class ProgressReport(BaseModel):
+    job_id: str
+    status: str
+
 class ErrorReport(BaseModel):
     message: str
     stack_trace: Optional[str] = None
+    url: Optional[str] = None
 
 def send_discord_notification(content: str, file_path: Optional[str] = None):
     if not DISCORD_WEBHOOK_URL:
@@ -66,6 +72,7 @@ async def create_job(job: JobRequest):
         "id": str(len(job_queue) + 1), # Simple ID generation
         "prompt": job.prompt,
         "status": "pending",
+        "detailed_status": "Queued",
         "result_url": None,
         "created_at": datetime.now()
     }
@@ -74,9 +81,41 @@ async def create_job(job: JobRequest):
     return {"job_id": new_job["id"], "status": "queued"}
 
 @app.get("/api/job")
-async def get_job(job_id: Optional[str] = None):
+async def get_job(job_id: Optional[str] = None, busy: bool = False):
+    global last_worker_activity
+
     # If job_id is provided, return specific job status
     if job_id:
+        # Check for worker timeout (10s = 2 * 5s polling interval)
+        if (datetime.now() - last_worker_activity).total_seconds() > 10:
+            # Check if we have already notified for this timeout
+            # We don't want to spam Discord, so maybe check a flag or just rely on the job fail?
+            # But the requirement is to notify.
+            # Let's check if there are pending jobs that are now failing.
+            
+            jobs_failed = False
+            for job in job_queue:
+                if job["id"] == job_id and job["status"] in ["pending", "processing"]:
+                    job["status"] = "failed"
+                    job["error"] = "Worker timeout (Userscript not active)"
+                    job["detailed_status"] = "Timeout"
+                    logger.error(f"Job {job_id} failed due to worker timeout")
+                    jobs_failed = True
+            
+            if jobs_failed:
+                background_tasks = BackgroundTasks() # We need to inject this or run sync.
+                # Since we are in a GET, we can't easily inject BackgroundTasks without changing signature and handling it.
+                # But we can just run it synchronously or use a helper. 
+                # Let's just log and maybe send notification if we can. 
+                # Ideally get_job should just return status. 
+                # But let's fire and forget for now in a non-blocking way if possible, or just call it.
+                # send_discord_notification is blocking (requests).
+                # better to spawn a thread or just do it.
+                try:
+                     send_discord_notification(f"⚠️ **Worker Timeout Detected**\nJob {job_id} failed because the Userscript worker has been inactive for > 10s.")
+                except:
+                    pass
+
         for job in job_queue:
             if job["id"] == job_id:
                 response = job.copy()
@@ -95,6 +134,10 @@ async def get_job(job_id: Optional[str] = None):
 
     # Otherwise, find the first pending job (Worker polling)
     async with queue_lock:
+        last_worker_activity = datetime.now()
+        if busy:
+            return {"status": "busy"}
+
         # 1. Reset stale jobs (processing > 2 mins)
         now = datetime.now()
         for job in job_queue:
@@ -127,10 +170,24 @@ async def get_job(job_id: Optional[str] = None):
         for job in job_queue:
             if job["status"] == "pending":
                 job["status"] = "processing"
+                job["detailed_status"] = "Picked up by worker"
                 job["updated_at"] = datetime.now()
                 logger.info(f"Job picked up: {job['id']}")
                 return job
     return {"status": "empty"}
+
+@app.post("/api/progress")
+async def report_progress(report: ProgressReport):
+    global last_worker_activity
+    async with queue_lock:
+        last_worker_activity = datetime.now()
+        for job in job_queue:
+            if job["id"] == report.job_id:
+                job["detailed_status"] = report.status
+                job["updated_at"] = datetime.now()
+                logger.info(f"Job {report.job_id} progress: {report.status}")
+                return {"status": "updated"}
+    return {"status": "job_not_found"}
 
 @app.post("/api/result")
 async def report_result(
@@ -159,6 +216,7 @@ async def report_result(
     for job in job_queue:
         if job["id"] == job_id:
             job["status"] = "completed"
+            job["detailed_status"] = "Completed"
             job["result_url"] = result_url
             break
     
@@ -175,6 +233,10 @@ async def report_error(error: ErrorReport, background_tasks: BackgroundTasks):
     message = f"⚠️ **Error Reported**\n{error.message}"
     if error.stack_trace:
         message += f"\n```\n{error.stack_trace}\n```"
+    
+    background_tasks.add_task(send_discord_notification, message)
+    if error.url:
+         message += f"\n**URL:** {error.url}"
     
     background_tasks.add_task(send_discord_notification, message)
     return {"status": "logged"}
