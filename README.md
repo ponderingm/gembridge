@@ -132,6 +132,23 @@ Check logs to see the automation progress:
 docker compose logs -f gemini-api
 ```
 
+### Local Testing Procedure
+**Important:** If running this alongside a production deployment (e.g. via Coolify), be careful of port conflicts. The default ports (8006, 3015) might conflict if not properly managed.
+
+1. **Start Local Instance**:
+   ```bash
+   docker compose up -d --build
+   ```
+2. **Verify Functionality**:
+   - Check logs: `docker compose logs -f`
+   - Test endpoints using curl or Postman.
+3. **Cleanup (CRITICAL)**:
+   - **Always stop the local instance before deploying via Coolify.**
+   - If you leave it running, Coolify will fail to bind ports 8006/3015.
+   ```bash
+   docker compose down
+   ```
+
 ## 更新履歴
 
 ### v1.2.1 (2025-12-05)
