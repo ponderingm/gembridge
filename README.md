@@ -27,7 +27,7 @@ docker compose up -d --build
 
 ### 3. ブラウザ設定 (初回のみ)
 
-1. ブラウザで `https://<raspberry-pi-ip>:3016` にアクセスします。（警告が出ますが「詳細設定」から「進む」を選択して無視してください）
+1. ブラウザで `https://<raspberry-pi-ip>:3006` にアクセスします。（警告が出ますが「詳細設定」から「進む」を選択して無視してください）
 2. コンテナ内のChromiumで `https://gemini.google.com` にアクセスし、Googleアカウントでログインします。
 3. Chromeウェブストアから **Tampermonkey** をインストールします。
 4. Tampermonkeyのダッシュボードを開き、`userscript.js` の内容を新規スクリプトとして登録します。
@@ -122,7 +122,7 @@ while True:
 
 ### Accessing the Browser
 To debug the automation or sign in to Google:
-- **URL:** `https://<your-server-ip>:3016`
+- **URL:** `https://<your-server-ip>:3006`
 - **User:** `kasm_user`
 - **Password:** `password`
 
@@ -133,7 +133,7 @@ docker compose logs -f gemini-api
 ```
 
 ### Local Testing Procedure
-**Important:** If running this alongside a production deployment (e.g. via Coolify), be careful of port conflicts. The default ports (8006, 3015) might conflict if not properly managed.
+**Important:** If running this alongside a production deployment (e.g. via Coolify), be careful of port conflicts. The default ports (8005, 3005, 3006) might conflict if not properly managed.
 
 1. **Start Local Instance**:
    ```bash
@@ -144,7 +144,7 @@ docker compose logs -f gemini-api
    - Test endpoints using curl or Postman.
 3. **Cleanup (CRITICAL)**:
    - **Always stop the local instance before deploying via Coolify.**
-   - If you leave it running, Coolify will fail to bind ports 8006/3015.
+   - If you leave it running, Coolify will fail to bind ports 8005/3005.
    ```bash
    docker compose down
    ```
