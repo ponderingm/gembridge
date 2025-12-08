@@ -120,7 +120,8 @@ async def create_job(job: JobRequest):
     else:
         raise HTTPException(status_code=400, detail="Prompt or data is required")
 
-    final_prompt = job.prompt
+    # final_prompt is already set by the logic above
+
     if job.image_data:
         final_prompt += "\n\n(重要: 添付の人物と同一性を保ったまま画像を生成してください)"
 
