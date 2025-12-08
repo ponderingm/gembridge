@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gemini Bridge
 // @namespace    http://tampermonkey.net/
-// @version      2.2.0
+// @version      2.2.7
 // @description  Automate Gemini image generation via API
 // @author       GemBridge
 // @match        *://*/*
@@ -29,7 +29,7 @@
     statusDiv.style.borderRadius = '5px';
     statusDiv.style.zIndex = '9999';
     statusDiv.style.fontFamily = 'monospace';
-    statusDiv.innerText = 'GemBridge v2.2.0: Initializing...';
+    statusDiv.innerText = 'GemBridge v2.2.7: Initializing...';
     document.body.appendChild(statusDiv);
 
     function updateStatus(msg, serverStatus = null) {
@@ -180,28 +180,29 @@
 
             // 0. Mode Selection
             const switchModel = async (targetMode) => {
-                // Determine target text based on mode key
+                // ターゲットモードのテキスト決定
                 const targetText = targetMode === 'thinking' ? '思考モード' : '高速モード';
 
                 updateStatus(`Checking model mode: target=${targetText}`, "Checking Mode");
 
-                // Normalize text helper
+                // テキスト正規化ヘルパー
                 const cleanText = (text) => (text || "").replace(/\s+/g, "").trim();
                 const cleanTarget = cleanText(targetText);
 
-                // Candidates: Prioritize aria-haspopup menus
+                // モード切替ボタンの候補を取得 (aria-haspopupを優先)
                 const getModeButton = () => {
                     const candidates = Array.from(document.querySelectorAll('button, div[role="button"], span[role="button"]'));
                     return candidates.find(el => {
                         if (el.offsetParent === null) return false;
                         const text = cleanText(el.textContent);
-                        return text.includes(cleanTarget) || text.includes("高速モード") || text.includes("思考モード");
+                        // Flash, Custom, Thinking などのキーワードも含めて判定
+                        return (text.includes(cleanTarget) || text.includes("高速モード") || text.includes("思考モード") || text.includes("Thinking") || text.includes("Flash"));
                     });
                 };
 
                 updateStatus("Waiting for mode selector...", "Mode Check");
                 let modeButton = null;
-                // Wait up to 15 seconds for the button to appear
+                // ボタンが表示されるまで最大15秒待機
                 for (let i = 0; i < 30; i++) {
                     modeButton = getModeButton();
                     if (modeButton) break;
@@ -220,8 +221,8 @@
                 log(`Found mode button: ${cleanText(modeButton.textContent)}`);
 
                 const currentText = cleanText(modeButton.textContent);
-                const currentIsThinking = currentText.includes('思考モード');
-                const currentIsHighSpeed = currentText.includes('高速モード');
+                const currentIsThinking = currentText.includes('思考モード') || currentText.includes('Thinking');
+                const currentIsHighSpeed = currentText.includes('高速モード') || currentText.includes('Flash');
 
                 if (targetMode === 'thinking' && currentIsThinking) {
                     log("Already in Thinking Mode.");
@@ -232,7 +233,7 @@
                     return;
                 }
 
-                // Keyboard Simulation Helper
+                // キーボードシミュレーションヘルパー
                 const simulateKey = (el, key, code) => {
                     const event = new KeyboardEvent('keydown', {
                         key: key,
@@ -243,67 +244,104 @@
                     el.dispatchEvent(event);
                 };
 
-                // Open Dropdown
+                // ドロップダウンを開く
                 updateStatus("Switching model (Keyboard)...", "Switching Model");
                 modeButton.click();
-                await new Promise(r => setTimeout(r, 1000)); // Wait for menu
+                await new Promise(r => setTimeout(r, 1000)); // メニュー表示待ち
 
-                // Simulating Keyboard Navigation
-                // Focus should be on the menu or the button.
-                // We try sending ArrowDown to document.activeElement
-                log("Starting keyboard navigation...");
+                // フォーカス修正: メニューコンテナを明示的に探してフォーカスする
+                log(`Focus before search: ${(document.activeElement ? document.activeElement.tagName : "null")}`);
+                const menuContainer = document.querySelector('div[role="menu"], ul[role="menu"], div[role="listbox"], [role="dialog"]');
+                if (menuContainer) {
+                    log(`Menu container found: ${menuContainer.tagName} (role=${menuContainer.getAttribute('role')}). Focusing...`);
+                    menuContainer.focus();
+                } else {
+                    log("Menu container NOT found with role query. Attempting to proceed with current focus...");
+                }
+                log(`Focus after attempt: ${(document.activeElement ? document.activeElement.tagName : "null")}`);
+
+                // メニューナビゲーション (キーボード - 下方向スキャンのみ)
+                // ユーザーフィードバックに基づき、待機時間を600msに延長し、試行回数を5回に設定
+                log("Starting keyboard navigation (Down loop, 5 steps, 600ms delay)...");
 
                 let found = false;
-                for (let i = 0; i < 5; i++) { // Try up to 5 steps down
+                let lastActiveElement = null;
+
+                // 戦略: 下へ最大5回移動
+                for (let i = 0; i < 5; i++) {
                     simulateKey(document.activeElement, 'ArrowDown', 'ArrowDown');
-                    await new Promise(r => setTimeout(r, 200)); // Wait for UI update
+                    await new Promise(r => setTimeout(r, 600)); // UI更新待ち (600ms)
 
                     const activeEl = document.activeElement;
                     const activeText = cleanText(activeEl ? activeEl.textContent : "");
-                    log(`Step ${i}: Selected '${activeText}'`);
+                    const activeRole = activeEl ? activeEl.getAttribute('role') : "";
+
+                    log(`Step ${i}: Selected tag=${activeEl.tagName} role=${activeRole} text='${activeText}'`);
+
+                    // コンテナ判定の厳格化: 両方のモード名を含んでいる場合は確実にコンテナ
+                    const isContainer = activeEl === menuContainer ||
+                        ['menu', 'dialog'].includes(activeRole) ||
+                        (activeText.includes("高速モード") && activeText.includes("思考モード"));
 
                     if (activeText.includes(cleanTarget)) {
-                        log("Target found! Simulating Click on focused item.");
-                        // Enter might not be enough, so we also click the active element which we know is correct.
+                        if (isContainer) {
+                            log(`[Ignore] Container detected (Role/Text Match). Continuing scan...`);
+                            lastActiveElement = activeEl;
+                            continue;
+                        }
+
+                        log(`Target found! Simulating selection.`);
                         simulateKey(activeEl, 'Enter', 'Enter');
+                        simulateKey(activeEl, 'Space', 'Space');
                         activeEl.click();
                         found = true;
                         break;
                     }
+                    lastActiveElement = activeEl;
                 }
 
                 if (!found) {
-                    log("Keyboard navigation failed to find target. Trying fallback selector approach...");
-                    // Fallback to original click logic
-                    const menuItems = Array.from(document.querySelectorAll('div[role="menuitem"], li[role="menuitem"], span, div'));
-                    const targetItem = menuItems.find(item => {
+                    log("Keyboard navigation failed to find target within limit. Trying fallback selector approach...");
+                    // フォールバック: 直接クリック
+                    // メニュー項目と思われる要素を広く検索
+                    const menuItems = Array.from(document.querySelectorAll('div[role="menuitem"], li[role="menuitem"], span, div, button'));
+
+                    // 候補を全て取得し、文字数順（昇順）にソートする
+                    // これにより、テキストを全て含むコンテナ（親）ではなく、テキストのみを含む項目（子）を優先する
+                    const candidates = menuItems.filter(item => {
                         if (item.offsetParent === null) return false;
                         const text = cleanText(item.textContent);
-                        return text.includes(cleanTarget) && item !== modeButton && !item.contains(modeButton);
-                    });
-                    if (targetItem) {
-                        targetItem.click();
-                        log("Fallback selection click executed.");
+                        return text.includes(cleanTarget) && item !== modeButton && !item.contains(modeButton) && !modeButton.contains(item);
+                    }).sort((a, b) => cleanText(a.textContent).length - cleanText(b.textContent).length);
+
+                    if (candidates.length > 0) {
+                        const bestTarget = candidates[0]; // 最短一致＝最も具体的な要素
+                        log(`Fallback target found (Shortest Match): ${bestTarget.textContent}`);
+                        bestTarget.click();
                     } else {
-                        log("Fallback target item not found.");
-                        document.body.click(); // Close
+                        log("Fallback target item not found. Dumping visible menu candidates for debug:");
+                        // デバッグ用: ターゲットが見つからない場合、見えているメニュー項目らしきものをログ出力
+                        menuItems.slice(0, 15).forEach(m => {
+                            if (m.offsetParent) log(`- [${m.tagName}] text='${cleanText(m.textContent)}'`);
+                        });
+                        document.body.click(); // メニューを閉じる
                     }
                 }
 
-                // Wait 1s for UI stability
+                // UI安定化待機
                 await new Promise(r => setTimeout(r, 1000));
 
-                // Verify switch
+                // 切り替え確認
                 updateStatus("Waiting for mode switch to complete...", "Switching...");
                 let switched = false;
                 for (let i = 0; i < 20; i++) {
-                    // ... (verification loop logic remains similar but simplified context)
                     await new Promise(r => setTimeout(r, 500));
                     const btn = getModeButton();
                     if (btn) {
                         const params = cleanText(btn.textContent);
-                        const isNowThinking = params.includes('思考モード');
-                        const isNowHighSpeed = params.includes('高速モード');
+                        const isNowThinking = params.includes('思考モード') || params.includes('Thinking');
+                        const isNowHighSpeed = params.includes('高速モード') || params.includes('Flash');
+
                         if (targetMode === 'thinking' && isNowThinking) { switched = true; break; }
                         if (targetMode === 'high-speed' && isNowHighSpeed) { switched = true; break; }
                     }

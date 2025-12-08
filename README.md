@@ -48,7 +48,8 @@ Access the API using the service name `gemini-api` on port `8000`.
 `Content-Type: application/json`
 
 **パラメータ:**
-- `prompt` (string, required): 画像生成のプロンプト。
+- `prompt` (string, optional): 画像生成のプロンプト（または指示のプレフィックス）。
+- `data` (object, optional): **[v2.1.0 New]** 構造化データ。JSONオブジェクトを渡すと、サーバー側で自動的にYAML形式に変換され、`prompt` と結合されます。
 - `mode` (string, optional): "high-speed" (デフォルト) または "thinking"。
 - `image_data` (string, optional): アップロードする画像のBase64エンコード文字列。
 
@@ -68,6 +69,28 @@ Access the API using the service name `gemini-api` on port `8000`.
   "mode": "high-speed",
   "image_data": "iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg=="
 }
+```
+
+**リクエスト例 (構造化データ - 推奨):**
+複雑なプロンプトの場合、`data` フィールドを使用するとYAMLに自動変換され、可読性が向上します。
+```json
+{
+  "prompt": "Generate Image:",
+  "data": {
+    "name": "Jane Doe",
+    "description": "A cyberpunk hacker",
+    "features": ["Blue neon hair", "Cybernetic arm"]
+  }
+}
+```
+*Geminiへ送信される実際のプロンプト:*
+```text
+Generate Image:
+name: Jane Doe
+description: A cyberpunk hacker
+features:
+- Blue neon hair
+- Cybernetic arm
 ```
 **Response:**
 ```json
@@ -223,3 +246,15 @@ You can run a parallel testing API server on port **8006** without conflicting w
   - **自動プロンプト調整**: 画像付きリクエストの場合、自動的に「添付の人物と同一性を保ったまま画像を生成してください」という指示をプロンプトに追加するようにサーバー側で処理。
   - `JobRequest` モデルと `processJob` ロジックを拡張。
   - 処理フロー: モード切替 → 画像ペースト(待機) → プロンプト入力 → 送信。
+
+### v2.2.1 (2025-12-08)
+- **API改善 (構造化データサポート)**:
+  - `/api/job` に `data` パラメータを追加。JSONオブジェクトを渡すとサーバー側でYAMLに変換してプロンプトと結合する機能を実装。
+
+### v2.2.7 (2025-12-08)
+- **Userscript改善 (モード切替の安定化)**:
+  - 「高速モード」と「思考モード」の切り替えロジックを大幅に強化。
+  - **最短一致選択 (Shortest Match)**: メニューコンテナ（長いテキスト）と個別の選択肢（短いテキスト）を区別するため、文字数が最も少ない要素を優先的に選択するように変更。これにより、メニュー全体を誤クリックする問題を解消。
+  - **フォーカス制御**: メニューコンテナ (`role="menu"`) への明示的なフォーカス移動と、フォーカス停滞時のフォールバック処理を追加。
+  - **キーボードナビゲーション**: `ArrowDown` スキャンループ（最大5回）と待機時間の調整（600ms）により、UIのラグラグに対応。
+  - 軽微なバグ修正 (`ReferenceError`) を含む。
