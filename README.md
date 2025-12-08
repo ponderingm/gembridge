@@ -186,3 +186,8 @@ You can run a parallel testing API server on port **8006** without conflicting w
   - **思考モード (Thinking Mode)** と **高速モード (High Speed Mode)** の切り替えに対応。
   - APIに `mode` パラメータを追加（デフォルト: `high-speed`）。
   - UserscriptがGemini UI上の「高速モード」「思考モード」を認識して自動で切り替えを実行。
+
+### v2.1.1 (2025-12-08)
+- **Userscript修正**:
+  - モード選択メニューの検出ロジックを改善（ボタン以外の要素や、メニュー展開後の確実なクリック処理を追加）。
+  - バージョンを `2.1.1` に更新。

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gemini Bridge
 // @namespace    http://tampermonkey.net/
-// @version      2.1
+// @version      2.1.1
 // @description  Automate Gemini image generation via API
 // @author       GemBridge
 // @match        *://*/*
@@ -184,20 +184,17 @@
 
                 updateStatus(`Checking model mode: target=${targetText}`, "Checking Mode");
 
-                // Selector for the dropdown trigger (current mode display)
-                // It usually has an arrow icon or is a button with text
-                const dropdownSelectors = [
-                    'button[aria-haspopup="menu"]',
-                    'mat-select',
-                    '[data-test-id="model-selector"]' // Hypothetical, need to search generically
-                ];
-
                 // Strategy: Find the button that contains "モード" or match current known modes
-                const buttons = Array.from(document.querySelectorAll('button'));
-                const modeButton = buttons.find(btn =>
-                    btn.innerText.includes('高速モード') ||
-                    btn.innerText.includes('思考モード')
-                );
+                // Broaden search to include divs and spans acting as buttons
+                const candidates = Array.from(document.querySelectorAll('button, div[role="button"], span[role="button"], .mat-select-trigger'));
+
+                const modeButton = candidates.find(el => {
+                    // Start with simple visibility check
+                    if (el.offsetParent === null) return false;
+                    const text = el.innerText || "";
+                    // Check if it contains the keywords
+                    return text.includes('高速モード') || text.includes('思考モード');
+                });
 
                 if (!modeButton) {
                     log("Mode selector button not found. Assuming correct mode or UI changed.");
@@ -208,19 +205,22 @@
                 if (modeButton.innerText.includes(targetText) && targetMode !== 'thinking') {
                     // Simple check: if we want high-speed and it says high-speed, we are good.
                     // But if we want thinking, "思考モード" match is good.
-                    // Wait, if we want High Speed and it says "Thinking", we need to switch.
-                    log("Already in target mode.");
+                    log(`Already in target mode: ${modeButton.innerText}`);
                     return;
                 }
 
                 // Specific Logic:
-                // If target is "thinking" and current does NOT have "思考", switch.
-                // If target is "high-speed" and current does NOT have "高速", switch.
                 const currentIsThinking = modeButton.innerText.includes('思考モード');
                 const currentIsHighSpeed = modeButton.innerText.includes('高速モード');
 
-                if (targetMode === 'thinking' && currentIsThinking) return;
-                if (targetMode === 'high-speed' && currentIsHighSpeed) return;
+                if (targetMode === 'thinking' && currentIsThinking) {
+                    log("Already in Thinking Mode.");
+                    return;
+                }
+                if (targetMode === 'high-speed' && currentIsHighSpeed) {
+                    log("Already in High Speed Mode.");
+                    return;
+                }
 
                 // Open Dropdown
                 updateStatus("Switching model...", "Switching Model");
@@ -228,8 +228,19 @@
                 await new Promise(r => setTimeout(r, 1000)); // Wait for menu
 
                 // Find menu item
-                const menuItems = Array.from(document.querySelectorAll('div[role="menuitem"], li[role="menuitem"], span'));
-                const targetItem = menuItems.find(item => item.innerText.includes(targetText));
+                // Menu items might be in a cdk-overlay or separate container, so search document body
+                const menuItems = Array.from(document.querySelectorAll('div[role="menuitem"], li[role="menuitem"], span, div'));
+
+                // Filter for items that definitely look like the target option
+                // The screenshot shows: "高速モード" and "思考モード (3 Pro 搭載)"
+                const targetItem = menuItems.find(item => {
+                    if (item.offsetParent === null) return false; // Must be visible
+                    const text = item.innerText || "";
+                    // Exact match or strong partial?
+                    // "高速モード" might match the button itself if not careful, but the button is likely not a menuitem (unless aria logic is weird)
+                    // We try to find the item inside the menu
+                    return text.includes(targetText) && item !== modeButton;
+                });
 
                 if (targetItem) {
                     targetItem.click();
@@ -237,7 +248,7 @@
                     await new Promise(r => setTimeout(r, 2000)); // Wait for switch
                 } else {
                     log(`Target mode item '${targetText}' not found in menu.`);
-                    // Try to close menu by clicking background or header?
+                    // Try to close menu by clicking background or header
                     document.body.click();
                 }
             };
