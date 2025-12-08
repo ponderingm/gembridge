@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gemini Bridge
 // @namespace    http://tampermonkey.net/
-// @version      2.1.2
+// @version      2.1.3
 // @description  Automate Gemini image generation via API
 // @author       GemBridge
 // @match        *://*/*
@@ -185,34 +185,36 @@
 
                 updateStatus(`Checking model mode: target=${targetText}`, "Checking Mode");
 
-                // Strategy: Find the button that contains "モード" or match current known modes
-                // Broaden search to include divs and spans acting as buttons
-                const candidates = Array.from(document.querySelectorAll('button, div[role="button"], span[role="button"], .mat-select-trigger'));
+                // Normalize text helper
+                const cleanText = (text) => (text || "").replace(/\s+/g, "").trim();
+                const cleanTarget = cleanText(targetText);
+
+                // Candidates: Prioritize aria-haspopup menus
+                const candidates = Array.from(document.querySelectorAll('button, div[role="button"], span[role="button"]'));
 
                 const modeButton = candidates.find(el => {
-                    // Start with simple visibility check
                     if (el.offsetParent === null) return false;
-                    const text = el.innerText || "";
-                    // Check if it contains the keywords
-                    return text.includes('高速モード') || text.includes('思考モード');
+                    const text = cleanText(el.textContent);
+                    // Match generic "mode" or specific target
+                    // Note: "思考モード" might be "思考モード(3Pro...)" -> clean matches start
+                    return text.includes(cleanTarget) || text.includes("高速モード") || text.includes("思考モード");
                 });
 
                 if (!modeButton) {
-                    log("Mode selector button not found. Assuming correct mode or UI changed.");
-                    return; // Fail safe
-                }
-
-                // If current text already matches target (partial match is enough for "思考モード" matching "思考モード (3 Pro...)")
-                if (modeButton.innerText.includes(targetText) && targetMode !== 'thinking') {
-                    // Simple check: if we want high-speed and it says high-speed, we are good.
-                    // But if we want thinking, "思考モード" match is good.
-                    log(`Already in target mode: ${modeButton.innerText}`);
+                    log("Mode selector button NOT found. Dumping visible buttons for debug:");
+                    candidates.slice(0, 10).forEach(b => {
+                        if (b.offsetParent) log(`- [${b.tagName}] text='${cleanText(b.textContent)}' aria-label='${b.ariaLabel}'`);
+                    });
+                    // Fallback: Try finding a button with aria-haspopup="menu" near the text input?
+                    // For now, return to avoid breaking flow.
                     return;
                 }
 
-                // Specific Logic:
-                const currentIsThinking = modeButton.innerText.includes('思考モード');
-                const currentIsHighSpeed = modeButton.innerText.includes('高速モード');
+                log(`Found mode button: ${cleanText(modeButton.textContent)}`);
+
+                const currentText = cleanText(modeButton.textContent);
+                const currentIsThinking = currentText.includes('思考モード');
+                const currentIsHighSpeed = currentText.includes('高速モード');
 
                 if (targetMode === 'thinking' && currentIsThinking) {
                     log("Already in Thinking Mode.");
@@ -229,18 +231,13 @@
                 await new Promise(r => setTimeout(r, 1000)); // Wait for menu
 
                 // Find menu item
-                // Menu items might be in a cdk-overlay or separate container, so search document body
                 const menuItems = Array.from(document.querySelectorAll('div[role="menuitem"], li[role="menuitem"], span, div'));
 
-                // Filter for items that definitely look like the target option
-                // The screenshot shows: "高速モード" and "思考モード (3 Pro 搭載)"
                 const targetItem = menuItems.find(item => {
-                    if (item.offsetParent === null) return false; // Must be visible
-                    const text = item.innerText || "";
-                    // Exact match or strong partial?
-                    // "高速モード" might match the button itself if not careful, but the button is likely not a menuitem (unless aria logic is weird)
-                    // We try to find the item inside the menu
-                    return text.includes(targetText) && item !== modeButton;
+                    if (item.offsetParent === null) return false;
+                    const text = cleanText(item.textContent);
+                    // Avoid clicking the button itself if matched
+                    return text.includes(cleanTarget) && item !== modeButton && !item.contains(modeButton);
                 });
 
                 if (targetItem) {
@@ -249,8 +246,7 @@
                     await new Promise(r => setTimeout(r, 2000)); // Wait for switch
                 } else {
                     log(`Target mode item '${targetText}' not found in menu.`);
-                    // Try to close menu by clicking background or header
-                    document.body.click();
+                    document.body.click(); // Close
                 }
             };
 
