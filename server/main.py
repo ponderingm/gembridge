@@ -39,7 +39,8 @@ last_worker_activity: datetime = datetime.now()
 class JobRequest(BaseModel):
     prompt: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
-    mode: Optional[str] = "high-speed" # thinking | high-speed
+    mode: Optional[str] = "high-speed"
+    image_data: Optional[str] = None # Base64 encoded image string # thinking | high-speed
 
 class ProgressReport(BaseModel):
     job_id: str
@@ -119,6 +120,10 @@ async def create_job(job: JobRequest):
     else:
         raise HTTPException(status_code=400, detail="Prompt or data is required")
 
+    final_prompt = job.prompt
+    if job.image_data:
+        final_prompt += "\n\n(重要: 添付の人物と同一性を保ったまま画像を生成してください)"
+
     new_job = {
         "id": str(len(job_queue) + 1), # Simple ID generation
         "prompt": final_prompt,
@@ -126,7 +131,8 @@ async def create_job(job: JobRequest):
         "status": "pending",
         "detailed_status": "Queued",
         "result_url": None,
-        "created_at": datetime.now()
+        "created_at": datetime.now(),
+        "image_data": job.image_data
     }
     job_queue.append(new_job)
     logger.info(f"Job created: {new_job['id']} - {new_job['prompt'][:50]}...")

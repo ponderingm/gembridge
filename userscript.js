@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gemini Bridge
 // @namespace    http://tampermonkey.net/
-// @version      2.1.9
+// @version      2.2.0
 // @description  Automate Gemini image generation via API
 // @author       GemBridge
 // @match        *://*/*
@@ -29,7 +29,7 @@
     statusDiv.style.borderRadius = '5px';
     statusDiv.style.zIndex = '9999';
     statusDiv.style.fontFamily = 'monospace';
-    statusDiv.innerText = 'GemBridge v2.1.9: Initializing...';
+    statusDiv.innerText = 'GemBridge v2.2.0: Initializing...';
     document.body.appendChild(statusDiv);
 
     function updateStatus(msg, serverStatus = null) {
@@ -316,39 +316,98 @@
                 }
             };
 
+            // 1. Image Upload (Paste Simulation)
+            const pasteImage = async (base64Data) => {
+                if (!base64Data) return;
+
+                updateStatus("Pasting image...", "Uploading Image");
+                try {
+                    // Convert Base64 to Blob
+                    const byteCharacters = atob(base64Data);
+                    const byteNumbers = new Array(byteCharacters.length);
+                    for (let i = 0; i < byteCharacters.length; i++) {
+                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    }
+                    const byteArray = new Uint8Array(byteNumbers);
+                    const blob = new Blob([byteArray], { type: "image/png" }); // Assume PNG for now, or detect
+                    const file = new File([blob], "image.png", { type: "image/png" });
+
+                    // Create DataTransfer and ClipboardEvent
+                    const dataTransfer = new DataTransfer();
+                    dataTransfer.items.add(file);
+
+                    const pasteEvent = new ClipboardEvent("paste", {
+                        bubbles: true,
+                        cancelable: true,
+                        clipboardData: dataTransfer
+                    });
+
+                    // Dispatch to active element (rich text editor)
+                    // The editor should be focused after mode switching logic usually focuses it, 
+                    // or we might need to re-find it.
+                    // Usually the input area is a contenteditable div.
+                    const editor = document.querySelector('div[contenteditable="true"]');
+                    if (editor) {
+                        editor.focus();
+                        editor.dispatchEvent(pasteEvent);
+                        log("Paste event dispatched.");
+
+                        // Wait for upload to complete (generic wait for now, as UI logic differs)
+                        // Gemini usually shows a thumbnail.
+                        await new Promise(r => setTimeout(r, 5000));
+                    } else {
+                        throw new Error("Editor element not found.");
+                    }
+
+                } catch (e) {
+                    reportError(`Image paste failed: ${e.message}`, e.stack);
+                    throw e; // Re-throw to fail job
+                }
+            };
+
+            // Helper for setting prompt
+            const setPrompt = async (promptText) => {
+                const inputSelectors = [
+                    'div[contenteditable="true"]',
+                    'rich-textarea > div',
+                    '#prompt-textarea',
+                    'div[data-placeholder="Enter a prompt here"]',
+                    'div[aria-label="Enter a prompt here"]'
+                ];
+
+                updateStatus("Waiting for input area...", "Waiting for Input Area");
+                const inputArea = await waitForElement(inputSelectors);
+                if (!inputArea) throw new Error("Input area not found");
+
+                updateStatus("Input area found. Entering prompt...", "Inputting Prompt");
+                inputArea.focus();
+                document.execCommand('insertText', false, promptText);
+                await new Promise(r => setTimeout(r, 1000)); // Wait a bit for UI update
+            };
+
+            // Execute Steps
+
+            // 1. Switch Mode
             if (job.mode) {
                 await switchModel(job.mode);
             }
 
-            // 1. Input Prompt
+            // 2. Paste Image (if any)
+            if (job.image_data) {
+                await pasteImage(job.image_data);
+            }
 
-            const inputSelectors = [
-                'div[contenteditable="true"]',
-                'rich-textarea > div',
-                '#prompt-textarea',
-                'div[data-placeholder="Enter a prompt here"]',
-                'div[aria-label="Enter a prompt here"]'
-            ];
+            // 3. Input Prompt
+            await setPrompt(job.prompt || "Generate Image"); // Use safe default if prompt is missing
 
-            updateStatus("Waiting for input area...", "Waiting for Input Area");
-            const inputArea = await waitForElement(inputSelectors);
-            if (!inputArea) throw new Error("Input area not found");
-
-            updateStatus("Input area found. Entering prompt...", "Inputting Prompt");
-            inputArea.focus();
-            document.execCommand('insertText', false, job.prompt);
-
-            // Wait a bit for UI update
-            await new Promise(r => setTimeout(r, 1000));
-
-            // 2. Click Send
+            // 4. Click Send
             const sendButton = document.querySelector('button[aria-label*="Send"], button[aria-label*="送信"]');
             if (!sendButton) throw new Error("Send button not found");
             sendButton.click();
 
             updateStatus("Prompt sent, waiting for generation...", "Generating Image");
 
-            // 3. Wait for Image
+            // 5. Wait for Image
             // Strategy: Wait for a new <img> element to appear that is significantly large (not an icon)
             const waitForGeneratedImage = (timeout = 90000) => { // 90s timeout
                 return new Promise((resolve, reject) => {
@@ -356,16 +415,7 @@
                     const initialImgCount = document.querySelectorAll('img').length;
 
                     const check = () => {
-                        // Report that we are still waiting every 5 seconds or so? 
-                        // Simplified: Just keep "Generating Image" status.
-
                         const images = Array.from(document.querySelectorAll('img'));
-                        // Filter for likely generated images:
-                        // 1. Must be visible
-                        // 2. Must be larger than a thumbnail (e.g., > 200px width)
-                        // 3. Should appear at the bottom of the chat (last in DOM usually)
-
-                        // Simple heuristic: Take the last image that meets size criteria
                         const candidates = images.filter(img => {
                             return img.width > 200 && img.height > 200 && img.offsetParent !== null;
                         });

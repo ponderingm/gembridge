@@ -43,11 +43,30 @@ Access the API using the service name `gemini-api` on port `8000`.
 
 ### 2. API Endpoints
 
-#### Create a Job
-**POST** `/api/job`
+#### 画像生成ジョブの登録
+`POST /api/job`
+`Content-Type: application/json`
+
+**パラメータ:**
+- `prompt` (string, required): 画像生成のプロンプト。
+- `mode` (string, optional): "high-speed" (デフォルト) または "thinking"。
+- `image_data` (string, optional): アップロードする画像のBase64エンコード文字列。
+
+**リクエスト例 (基本):**
 ```json
 {
-  "prompt": "A futuristic city, digital art"
+  "prompt": "cybergirl, 8k, best quality",
+  "mode": "high-speed"
+}
+```
+
+**リクエスト例 (画像アップロードあり):**
+※ `image_data` がある場合、自動的に「添付の人物と同一性を保ったまま画像を生成してください」という指示がプロンプトに追加されます。
+```json
+{
+  "prompt": "wearing kimono",
+  "mode": "high-speed",
+  "image_data": "iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg=="
 }
 ```
 **Response:**
@@ -198,7 +217,9 @@ You can run a parallel testing API server on port **8006** without conflicting w
   - 無限再試行ループ（ゾンビジョブのループ）を解消。
   - バージョンを `2.1.2` に更新。
 
-### v2.1.9 (2025-12-08)
-- **Userscript改善**:
-  - モード選択のキーボード操作時、`Enter` キーだけでなく、アクティブな要素に対して直接 `.click()` も実行するように変更（確実な選択確定のため）。
-  - バージョンを `2.1.9` に更新。
+### v2.2.0 (2025-12-08)
+- **新機能 (画像アップロード)**:
+  - API経由でBase64形式の画像データを送信し、Userscript側でGemini Chatにペースト（アップロード）する機能を追加。
+  - **自動プロンプト調整**: 画像付きリクエストの場合、自動的に「添付の人物と同一性を保ったまま画像を生成してください」という指示をプロンプトに追加するようにサーバー側で処理。
+  - `JobRequest` モデルと `processJob` ロジックを拡張。
+  - 処理フロー: モード切替 → 画像ペースト(待機) → プロンプト入力 → 送信。
