@@ -132,22 +132,26 @@ Check logs to see the automation progress:
 docker compose logs -f gemini-api
 ```
 
-### Local Testing Procedure
-**Important:** If running this alongside a production deployment (e.g. via Coolify), be careful of port conflicts. The default ports (8005, 3005, 3006) might conflict if not properly managed.
+### Local Testing Procedure (API Only)
+You can run a parallel testing API server on port **8006** without conflicting with the production instance (8005). The test browser container is NOT started to save resources.
 
-1. **Start Local Instance**:
+1. **Start Test API**:
    ```bash
-   docker compose up -d --build
+   ./run_test.sh
+   # API: http://localhost:8006
    ```
-2. **Verify Functionality**:
-   - Check logs: `docker compose logs -f`
-   - Test endpoints using curl or Postman.
-3. **Cleanup (CRITICAL)**:
-   - **Always stop the local instance before deploying via Coolify.**
-   - If you leave it running, Coolify will fail to bind ports 8005/3005.
+2. **Connect Existing Browser**:
+   - Access your existing browser (e.g. at port 3016).
+   - Update the Userscript `API_BASE` to pointing to the test server:
+     ```javascript
+     const API_BASE = "http://<host-ip>:8006/api"; // Use Host IP, not localhost if in container
+     ```
+   - *Note:* If running Userscript inside a container, `localhost` refers to the container itself. You must use the host's IP address.
+3. **Stop Test API**:
    ```bash
-   docker compose down
+   ./stop_test.sh
    ```
+
 
 ## 更新履歴
 
