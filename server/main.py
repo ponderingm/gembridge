@@ -39,6 +39,7 @@ last_worker_activity: datetime = datetime.now()
 class JobRequest(BaseModel):
     prompt: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
+    mode: Optional[str] = "high-speed" # thinking | high-speed
 
 class ProgressReport(BaseModel):
     job_id: str
@@ -120,6 +121,7 @@ async def create_job(job: JobRequest):
     new_job = {
         "id": str(len(job_queue) + 1), # Simple ID generation
         "prompt": final_prompt,
+        "mode": job.mode,
         "status": "pending",
         "detailed_status": "Queued",
         "result_url": None,

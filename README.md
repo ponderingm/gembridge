@@ -180,3 +180,9 @@ You can run a parallel testing API server on port **8006** without conflicting w
   - Userscriptのエラー報告時に、発生元のURLを含めるように改善。
 - **信頼性改善**:
   - Geminiの読み込み遅延に対応するため、Userscriptの要素待機時間を20秒から60秒に延長。
+
+### v2.1.0 (2025-12-08)
+- **モデル選択機能**:
+  - **思考モード (Thinking Mode)** と **高速モード (High Speed Mode)** の切り替えに対応。
+  - APIに `mode` パラメータを追加（デフォルト: `high-speed`）。
+  - UserscriptがGemini UI上の「高速モード」「思考モード」を認識して自動で切り替えを実行。

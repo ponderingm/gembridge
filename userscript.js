@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gemini Bridge
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      2.1
 // @description  Automate Gemini image generation via API
 // @author       GemBridge
 // @match        *://*/*
@@ -153,9 +153,8 @@
 
     async function processJob(job) {
         try {
-            updateStatus(`Processing Job ${job.id}...`, "Processing Started");
+            updateStatus(`Processing Job ${job.id} (${job.mode})...`, "Processing Started");
 
-            // 1. Input Prompt
             // Helper to wait for element
             const waitForElement = (selectors, timeout = 60000) => { // 60s timeout
                 return new Promise((resolve, reject) => {
@@ -177,6 +176,77 @@
                     check();
                 });
             };
+
+            // 0. Mode Selection
+            const switchModel = async (targetMode) => {
+                // Determine target text based on mode key
+                const targetText = targetMode === 'thinking' ? '思考モード' : '高速モード';
+
+                updateStatus(`Checking model mode: target=${targetText}`, "Checking Mode");
+
+                // Selector for the dropdown trigger (current mode display)
+                // It usually has an arrow icon or is a button with text
+                const dropdownSelectors = [
+                    'button[aria-haspopup="menu"]',
+                    'mat-select',
+                    '[data-test-id="model-selector"]' // Hypothetical, need to search generically
+                ];
+
+                // Strategy: Find the button that contains "モード" or match current known modes
+                const buttons = Array.from(document.querySelectorAll('button'));
+                const modeButton = buttons.find(btn =>
+                    btn.innerText.includes('高速モード') ||
+                    btn.innerText.includes('思考モード')
+                );
+
+                if (!modeButton) {
+                    log("Mode selector button not found. Assuming correct mode or UI changed.");
+                    return; // Fail safe
+                }
+
+                // If current text already matches target (partial match is enough for "思考モード" matching "思考モード (3 Pro...)")
+                if (modeButton.innerText.includes(targetText) && targetMode !== 'thinking') {
+                    // Simple check: if we want high-speed and it says high-speed, we are good.
+                    // But if we want thinking, "思考モード" match is good.
+                    // Wait, if we want High Speed and it says "Thinking", we need to switch.
+                    log("Already in target mode.");
+                    return;
+                }
+
+                // Specific Logic:
+                // If target is "thinking" and current does NOT have "思考", switch.
+                // If target is "high-speed" and current does NOT have "高速", switch.
+                const currentIsThinking = modeButton.innerText.includes('思考モード');
+                const currentIsHighSpeed = modeButton.innerText.includes('高速モード');
+
+                if (targetMode === 'thinking' && currentIsThinking) return;
+                if (targetMode === 'high-speed' && currentIsHighSpeed) return;
+
+                // Open Dropdown
+                updateStatus("Switching model...", "Switching Model");
+                modeButton.click();
+                await new Promise(r => setTimeout(r, 1000)); // Wait for menu
+
+                // Find menu item
+                const menuItems = Array.from(document.querySelectorAll('div[role="menuitem"], li[role="menuitem"], span'));
+                const targetItem = menuItems.find(item => item.innerText.includes(targetText));
+
+                if (targetItem) {
+                    targetItem.click();
+                    log(`Clicked ${targetText}`);
+                    await new Promise(r => setTimeout(r, 2000)); // Wait for switch
+                } else {
+                    log(`Target mode item '${targetText}' not found in menu.`);
+                    // Try to close menu by clicking background or header?
+                    document.body.click();
+                }
+            };
+
+            if (job.mode) {
+                await switchModel(job.mode);
+            }
+
+            // 1. Input Prompt
 
             const inputSelectors = [
                 'div[contenteditable="true"]',
