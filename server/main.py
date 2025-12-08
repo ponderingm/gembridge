@@ -27,6 +27,8 @@ os.makedirs(IMAGES_DIR, exist_ok=True)
 app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
 
 import asyncio
+import json
+import yaml
 
 # In-memory Job Queue
 # Structure: { "id": str, "prompt": str, "status": "pending" | "processing" | "completed" | "failed", "result_url": str, "created_at": datetime }
@@ -68,16 +70,32 @@ def send_discord_notification(content: str, file_path: Optional[str] = None):
 
 @app.post("/api/job")
 async def create_job(job: JobRequest):
+    prompt_content = job.prompt
+    
+    # Try to parse JSON and convert to YAML for better readability
+    try:
+        json_obj = json.loads(prompt_content)
+        # Convert to YAML
+        # allow_unicode=True to keep Japanese characters
+        # default_flow_style=False to use block style (more readable)
+        prompt_content = yaml.dump(json_obj, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        logger.info("Converted JSON prompt to YAML.")
+    except json.JSONDecodeError:
+        # Not a JSON string, keep as is
+        pass
+    except Exception as e:
+        logger.warning(f"Failed to convert JSON to YAML: {e}")
+
     new_job = {
         "id": str(len(job_queue) + 1), # Simple ID generation
-        "prompt": job.prompt,
+        "prompt": prompt_content,
         "status": "pending",
         "detailed_status": "Queued",
         "result_url": None,
         "created_at": datetime.now()
     }
     job_queue.append(new_job)
-    logger.info(f"Job created: {new_job['id']} - {new_job['prompt']}")
+    logger.info(f"Job created: {new_job['id']} - {new_job['prompt'][:50]}...")
     return {"job_id": new_job["id"], "status": "queued"}
 
 @app.get("/api/job")
@@ -138,33 +156,40 @@ async def get_job(job_id: Optional[str] = None, busy: bool = False):
         if busy:
             return {"status": "busy"}
 
-        # 1. Reset stale jobs (processing > 2 mins)
+        # 1. Zombie Recovery & Stale Job Reset
         now = datetime.now()
         for job in job_queue:
             if job["status"] == "processing":
-                # Assuming job has a 'started_at' or we use 'created_at' if we don't track start time.
-                # Let's add 'started_at' when we pick it up.
-                # If 'started_at' is missing (legacy), we can skip or reset.
-                # For simplicity, let's just check if we can track it.
-                # Actually, let's just use a simple timeout based on last update if we had it.
-                # Since we don't have 'updated_at', let's add it or just use created_at if it's very old?
-                # No, created_at is when it was made.
-                # Let's add 'updated_at' to the job structure.
-                pass
-
-        # Real implementation:
-        # First, let's ensure we track when a job started processing.
-        
-        # Check for stale jobs
-        for job in job_queue:
-            if job["status"] == "processing":
+                # A. Zombie Recovery: Idle worker asking for work while job is processing
+                # If we are here (busy=False), it means the worker is free.
+                # If there is a processing job, the worker likely dropped it.
+                # Use a small grace period (e.g. 5s) to avoid race conditions where the worker *just* took it.
                 updated_at = job.get("updated_at")
                 if updated_at:
                     elapsed = (now - updated_at).total_seconds()
-                    if elapsed > 120: # 2 minutes
+                    
+                    # If job is merely "Picked up" but stuck for > 30s, reset it.
+                    if job.get("detailed_status") == "Picked up by worker" and elapsed > 30:
+                         job["status"] = "pending"
+                         job["updated_at"] = now
+                         logger.warning(f"Resetting stuck job (Picked up state): {job['id']}")
+                         continue
+
+                    # If > 120s total processing time, reset it (Stale check)
+                    if elapsed > 120: 
                         job["status"] = "pending"
                         job["updated_at"] = now
-                        logger.warning(f"Resetting stale job: {job['id']}")
+                        logger.warning(f"Resetting stale job (>120s): {job['id']}")
+                        continue
+
+                    # B. Active Zombie Recovery
+                    # If the worker is polling (IDLE) and the job is processing, 
+                    # and enough time (e.g. > 5s) has passed since it was picked up:
+                    # It implies the worker doesn't know it should be working on this.
+                    if elapsed > 5:
+                        logger.warning(f"Zombie job detected: {job['id']}. Re-sending to idle worker.")
+                        job["updated_at"] = datetime.now() # Reset timeout
+                        return job
         
         # Find pending job
         for job in job_queue:
