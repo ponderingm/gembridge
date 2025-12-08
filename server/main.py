@@ -49,6 +49,7 @@ class ErrorReport(BaseModel):
     message: str
     stack_trace: Optional[str] = None
     url: Optional[str] = None
+    job_id: Optional[str] = None
 
 def send_discord_notification(content: str, file_path: Optional[str] = None):
     if not DISCORD_WEBHOOK_URL:
@@ -287,8 +288,21 @@ async def report_result(
 @app.post("/api/error")
 async def report_error(error: ErrorReport, background_tasks: BackgroundTasks):
     logger.error(f"Client reported error: {error.message}")
+
+    # Fail the job if ID is provided
+    if error.job_id:
+        for job in job_queue:
+            if job["id"] == error.job_id:
+                job["status"] = "failed"
+                job["detailed_status"] = f"Error: {error.message}"
+                job["error"] = error.message
+                logger.warning(f"Marked job {error.job_id} as failed due to client error.")
+                break
     
     message = f"⚠️ **Error Reported**\n{error.message}"
+    if error.job_id:
+        message += f"\n**Job ID:** {error.job_id}"
+
     if error.stack_trace:
         message += f"\n```\n{error.stack_trace}\n```"
     

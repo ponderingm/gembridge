@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gemini Bridge
 // @namespace    http://tampermonkey.net/
-// @version      2.1.1
+// @version      2.1.2
 // @description  Automate Gemini image generation via API
 // @author       GemBridge
 // @match        *://*/*
@@ -53,7 +53,7 @@
         console.log(`[GemBridge] ${msg} `);
     }
 
-    function reportError(message, stack) {
+    function reportError(message, stack, jobId = null) {
         updateStatus(`Error: ${message} `);
         GM_xmlhttpRequest({
             method: "POST",
@@ -62,7 +62,8 @@
             data: JSON.stringify({
                 message: message,
                 stack_trace: stack,
-                url: window.location.href
+                url: window.location.href,
+                job_id: jobId
             }),
             onload: function (response) {
                 log("Error reported to server.");
@@ -368,8 +369,9 @@
             });
 
         } catch (e) {
-            reportError(`Job processing failed: ${e.message}`, e.stack);
+            reportError(`Job processing failed: ${e.message}`, e.stack, job.id);
         }
     }
+
 
 })();
