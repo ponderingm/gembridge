@@ -37,7 +37,8 @@ queue_lock = asyncio.Lock()
 last_worker_activity: datetime = datetime.now()
 
 class JobRequest(BaseModel):
-    prompt: str
+    prompt: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
 
 class ProgressReport(BaseModel):
     job_id: str
@@ -70,25 +71,55 @@ def send_discord_notification(content: str, file_path: Optional[str] = None):
 
 @app.post("/api/job")
 async def create_job(job: JobRequest):
-    prompt_content = job.prompt
+    final_prompt = ""
+
+    # 1. Structured Data Approach
+    if job.data:
+        try:
+            yaml_string = yaml.dump(job.data, allow_unicode=True, default_flow_style=False, sort_keys=False)
+            if job.prompt:
+                final_prompt = f"{job.prompt}\n{yaml_string}"
+            else:
+                final_prompt = yaml_string
+            logger.info("Converted structured data to YAML.")
+        except Exception as e:
+            logger.error(f"Failed to convert data to YAML: {e}")
+            final_prompt = job.prompt or "" # Fallback
+            
+    # 2. Legacy String Approach (Backward Compatibility)
+    elif job.prompt:
+        prompt_content = job.prompt
+        # Try to parse JSON and convert to YAML for better readability
+        # Also handle "Generate Image: {...}" prefix extraction roughly
+        import re
+        match = re.search(r'^(.*?)\s*({.*})\s*$', prompt_content, re.DOTALL)
+        
+        try:
+            if match:
+                prefix = match.group(1)
+                json_str = match.group(2)
+                json_obj = json.loads(json_str)
+                yaml_string = yaml.dump(json_obj, allow_unicode=True, default_flow_style=False, sort_keys=False)
+                final_prompt = f"{prefix}\n{yaml_string}" if prefix.strip() else yaml_string
+                logger.info("Converted embedded JSON to YAML.")
+            else:
+                 # Direct JSON check
+                json_obj = json.loads(prompt_content)
+                final_prompt = yaml.dump(json_obj, allow_unicode=True, default_flow_style=False, sort_keys=False)
+                logger.info("Converted JSON string to YAML.")
+        except (json.JSONDecodeError, AttributeError):
+            # Not a JSON string or structure, keep as is
+            final_prompt = prompt_content
+        except Exception as e:
+             logger.warning(f"Failed to convert legacy prompt: {e}")
+             final_prompt = prompt_content
     
-    # Try to parse JSON and convert to YAML for better readability
-    try:
-        json_obj = json.loads(prompt_content)
-        # Convert to YAML
-        # allow_unicode=True to keep Japanese characters
-        # default_flow_style=False to use block style (more readable)
-        prompt_content = yaml.dump(json_obj, allow_unicode=True, default_flow_style=False, sort_keys=False)
-        logger.info("Converted JSON prompt to YAML.")
-    except json.JSONDecodeError:
-        # Not a JSON string, keep as is
-        pass
-    except Exception as e:
-        logger.warning(f"Failed to convert JSON to YAML: {e}")
+    else:
+        raise HTTPException(status_code=400, detail="Prompt or data is required")
 
     new_job = {
         "id": str(len(job_queue) + 1), # Simple ID generation
-        "prompt": prompt_content,
+        "prompt": final_prompt,
         "status": "pending",
         "detailed_status": "Queued",
         "result_url": None,
