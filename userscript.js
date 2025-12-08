@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gemini Bridge
 // @namespace    http://tampermonkey.net/
-// @version      2.1.3
+// @version      2.1.9
 // @description  Automate Gemini image generation via API
 // @author       GemBridge
 // @match        *://*/*
@@ -29,7 +29,7 @@
     statusDiv.style.borderRadius = '5px';
     statusDiv.style.zIndex = '9999';
     statusDiv.style.fontFamily = 'monospace';
-    statusDiv.innerText = 'GemBridge v2.0: Initializing...';
+    statusDiv.innerText = 'GemBridge v2.1.9: Initializing...';
     document.body.appendChild(statusDiv);
 
     function updateStatus(msg, serverStatus = null) {
@@ -190,23 +190,30 @@
                 const cleanTarget = cleanText(targetText);
 
                 // Candidates: Prioritize aria-haspopup menus
-                const candidates = Array.from(document.querySelectorAll('button, div[role="button"], span[role="button"]'));
+                const getModeButton = () => {
+                    const candidates = Array.from(document.querySelectorAll('button, div[role="button"], span[role="button"]'));
+                    return candidates.find(el => {
+                        if (el.offsetParent === null) return false;
+                        const text = cleanText(el.textContent);
+                        return text.includes(cleanTarget) || text.includes("高速モード") || text.includes("思考モード");
+                    });
+                };
 
-                const modeButton = candidates.find(el => {
-                    if (el.offsetParent === null) return false;
-                    const text = cleanText(el.textContent);
-                    // Match generic "mode" or specific target
-                    // Note: "思考モード" might be "思考モード(3Pro...)" -> clean matches start
-                    return text.includes(cleanTarget) || text.includes("高速モード") || text.includes("思考モード");
-                });
+                updateStatus("Waiting for mode selector...", "Mode Check");
+                let modeButton = null;
+                // Wait up to 15 seconds for the button to appear
+                for (let i = 0; i < 30; i++) {
+                    modeButton = getModeButton();
+                    if (modeButton) break;
+                    await new Promise(r => setTimeout(r, 500));
+                }
 
                 if (!modeButton) {
-                    log("Mode selector button NOT found. Dumping visible buttons for debug:");
+                    log("Mode selector button NOT found after waiting. Dumping visible buttons for debug:");
+                    const candidates = Array.from(document.querySelectorAll('button, div[role="button"]'));
                     candidates.slice(0, 10).forEach(b => {
                         if (b.offsetParent) log(`- [${b.tagName}] text='${cleanText(b.textContent)}' aria-label='${b.ariaLabel}'`);
                     });
-                    // Fallback: Try finding a button with aria-haspopup="menu" near the text input?
-                    // For now, return to avoid breaking flow.
                     return;
                 }
 
@@ -225,28 +232,87 @@
                     return;
                 }
 
+                // Keyboard Simulation Helper
+                const simulateKey = (el, key, code) => {
+                    const event = new KeyboardEvent('keydown', {
+                        key: key,
+                        code: code,
+                        bubbles: true,
+                        cancelable: true
+                    });
+                    el.dispatchEvent(event);
+                };
+
                 // Open Dropdown
-                updateStatus("Switching model...", "Switching Model");
+                updateStatus("Switching model (Keyboard)...", "Switching Model");
                 modeButton.click();
                 await new Promise(r => setTimeout(r, 1000)); // Wait for menu
 
-                // Find menu item
-                const menuItems = Array.from(document.querySelectorAll('div[role="menuitem"], li[role="menuitem"], span, div'));
+                // Simulating Keyboard Navigation
+                // Focus should be on the menu or the button.
+                // We try sending ArrowDown to document.activeElement
+                log("Starting keyboard navigation...");
 
-                const targetItem = menuItems.find(item => {
-                    if (item.offsetParent === null) return false;
-                    const text = cleanText(item.textContent);
-                    // Avoid clicking the button itself if matched
-                    return text.includes(cleanTarget) && item !== modeButton && !item.contains(modeButton);
-                });
+                let found = false;
+                for (let i = 0; i < 5; i++) { // Try up to 5 steps down
+                    simulateKey(document.activeElement, 'ArrowDown', 'ArrowDown');
+                    await new Promise(r => setTimeout(r, 200)); // Wait for UI update
 
-                if (targetItem) {
-                    targetItem.click();
-                    log(`Clicked ${targetText}`);
-                    await new Promise(r => setTimeout(r, 2000)); // Wait for switch
+                    const activeEl = document.activeElement;
+                    const activeText = cleanText(activeEl ? activeEl.textContent : "");
+                    log(`Step ${i}: Selected '${activeText}'`);
+
+                    if (activeText.includes(cleanTarget)) {
+                        log("Target found! Simulating Click on focused item.");
+                        // Enter might not be enough, so we also click the active element which we know is correct.
+                        simulateKey(activeEl, 'Enter', 'Enter');
+                        activeEl.click();
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    log("Keyboard navigation failed to find target. Trying fallback selector approach...");
+                    // Fallback to original click logic
+                    const menuItems = Array.from(document.querySelectorAll('div[role="menuitem"], li[role="menuitem"], span, div'));
+                    const targetItem = menuItems.find(item => {
+                        if (item.offsetParent === null) return false;
+                        const text = cleanText(item.textContent);
+                        return text.includes(cleanTarget) && item !== modeButton && !item.contains(modeButton);
+                    });
+                    if (targetItem) {
+                        targetItem.click();
+                        log("Fallback selection click executed.");
+                    } else {
+                        log("Fallback target item not found.");
+                        document.body.click(); // Close
+                    }
+                }
+
+                // Wait 1s for UI stability
+                await new Promise(r => setTimeout(r, 1000));
+
+                // Verify switch
+                updateStatus("Waiting for mode switch to complete...", "Switching...");
+                let switched = false;
+                for (let i = 0; i < 20; i++) {
+                    // ... (verification loop logic remains similar but simplified context)
+                    await new Promise(r => setTimeout(r, 500));
+                    const btn = getModeButton();
+                    if (btn) {
+                        const params = cleanText(btn.textContent);
+                        const isNowThinking = params.includes('思考モード');
+                        const isNowHighSpeed = params.includes('高速モード');
+                        if (targetMode === 'thinking' && isNowThinking) { switched = true; break; }
+                        if (targetMode === 'high-speed' && isNowHighSpeed) { switched = true; break; }
+                    }
+                }
+
+                if (!switched) {
+                    log("Warning: Mode switch verification timed out.");
                 } else {
-                    log(`Target mode item '${targetText}' not found in menu.`);
-                    document.body.click(); // Close
+                    log("Mode switch confirmed.");
                 }
             };
 
