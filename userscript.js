@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gemini Bridge
 // @namespace    http://tampermonkey.net/
-// @version      2.2.0
+// @version      2.3.0
 // @description  Automate Gemini image generation via API
 // @author       GemBridge
 // @match        *://*/*
@@ -29,7 +29,7 @@
     statusDiv.style.borderRadius = '5px';
     statusDiv.style.zIndex = '9999';
     statusDiv.style.fontFamily = 'monospace';
-    statusDiv.innerText = 'GemBridge v2.2.0: Initializing...';
+    statusDiv.innerText = 'GemBridge v2.3.0: Initializing...';
     document.body.appendChild(statusDiv);
 
     function updateStatus(msg, serverStatus = null) {
@@ -180,8 +180,13 @@
 
             // 0. Mode Selection
             const switchModel = async (targetMode) => {
-                // Determine target text based on mode key
-                const targetText = targetMode === 'thinking' ? '思考モード' : '高速モード';
+                // Mode text mapping
+                const modeTextMap = {
+                    thinking: '思考モード',
+                    pro: 'Pro',
+                    'high-speed': '高速モード'
+                };
+                const targetText = modeTextMap[targetMode] || '高速モード';
 
                 updateStatus(`Checking model mode: target=${targetText}`, "Checking Mode");
 
@@ -195,7 +200,7 @@
                     return candidates.find(el => {
                         if (el.offsetParent === null) return false;
                         const text = cleanText(el.textContent);
-                        return text.includes(cleanTarget) || text.includes("高速モード") || text.includes("思考モード");
+                        return Object.values(modeTextMap).some(t => text.includes(cleanText(t)));
                     });
                 };
 
@@ -219,16 +224,10 @@
 
                 log(`Found mode button: ${cleanText(modeButton.textContent)}`);
 
+                // Check if already in the target mode
                 const currentText = cleanText(modeButton.textContent);
-                const currentIsThinking = currentText.includes('思考モード');
-                const currentIsHighSpeed = currentText.includes('高速モード');
-
-                if (targetMode === 'thinking' && currentIsThinking) {
-                    log("Already in Thinking Mode.");
-                    return;
-                }
-                if (targetMode === 'high-speed' && currentIsHighSpeed) {
-                    log("Already in High Speed Mode.");
+                if (currentText.includes(cleanTarget)) {
+                    log(`Already in ${targetText}.`);
                     return;
                 }
 
@@ -302,10 +301,7 @@
                     const btn = getModeButton();
                     if (btn) {
                         const params = cleanText(btn.textContent);
-                        const isNowThinking = params.includes('思考モード');
-                        const isNowHighSpeed = params.includes('高速モード');
-                        if (targetMode === 'thinking' && isNowThinking) { switched = true; break; }
-                        if (targetMode === 'high-speed' && isNowHighSpeed) { switched = true; break; }
+                        if (params.includes(cleanTarget)) { switched = true; break; }
                     }
                 }
 

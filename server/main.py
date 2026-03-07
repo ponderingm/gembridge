@@ -40,7 +40,7 @@ class JobRequest(BaseModel):
     prompt: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
     mode: Optional[str] = "high-speed"
-    image_data: Optional[str] = None # Base64 encoded image string # thinking | high-speed
+    image_data: Optional[str] = None # Base64 encoded image string # thinking | high-speed | pro
 
 class ProgressReport(BaseModel):
     job_id: str
