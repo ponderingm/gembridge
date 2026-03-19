@@ -5,6 +5,7 @@ import shutil
 import requests
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from datetime import datetime
@@ -319,6 +320,13 @@ async def report_error(error: ErrorReport, background_tasks: BackgroundTasks):
     
     background_tasks.add_task(send_discord_notification, message)
     return {"status": "logged"}
+
+@app.get("/ui")
+async def serve_ui():
+    ui_path = os.path.join(os.path.dirname(__file__), "ui.html")
+    if not os.path.exists(ui_path):
+        raise HTTPException(status_code=404, detail="UI ファイルが見つかりません")
+    return FileResponse(ui_path, media_type="text/html")
 
 @app.get("/health")
 async def health_check():

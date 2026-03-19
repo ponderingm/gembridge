@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gembridge WebUI</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f1117;
+      color: #e0e0e0;
+      min-height: 100vh;
+      padding: 24px 16px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 24px;
+      color: #90caf9;
+      letter-spacing: 0.04em;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    /* ---- Tabs ---- */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      border-bottom: 2px solid #2a2d3a;
+      margin-bottom: 20px;
+    }
+    .tab-btn {
+      padding: 8px 20px;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      color: #9e9e9e;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 600;
+      transition: color 0.15s, border-color 0.15s;
+      margin-bottom: -2px;
+    }
+    .tab-btn.active {
+      color: #90caf9;
+      border-bottom-color: #90caf9;
+    }
+
+    /* ---- Card ---- */
+    .card {
+      background: #1a1d27;
+      border: 1px solid #2a2d3a;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #9e9e9e;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 6px;
+    }
+
+    textarea, select, input[type="file"] {
+      width: 100%;
+      border: 1px solid #2a2d3a;
+      border-radius: 6px;
+      background: #0f1117;
+      color: #e0e0e0;
+      font-size: 0.95rem;
+      padding: 10px 12px;
+      margin-bottom: 16px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    textarea { resize: vertical; min-height: 90px; }
+    textarea:focus, select:focus { border-color: #90caf9; }
+    select option { background: #1a1d27; }
+
+    input[type="file"] {
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+    input[type="file"]::file-selector-button {
+      background: #2a2d3a;
+      border: none;
+      border-radius: 4px;
+      color: #e0e0e0;
+      padding: 4px 12px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+
+    .field-group { margin-bottom: 0; }
+    .field-group:not(:last-child) { margin-bottom: 4px; }
+
+    /* ---- Buttons ---- */
+    .btn-primary {
+      width: 100%;
+      padding: 12px;
+      background: #1565c0;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .btn-primary:hover:not(:disabled) { background: #1976d2; }
+    .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* ---- Status / Result ---- */
+    #status-section { display: none; }
+
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #2a2d3a;
+      font-size: 0.9rem;
+    }
+    .status-row:last-child { border-bottom: none; }
+    .status-label { color: #9e9e9e; font-weight: 600; }
+    .status-value { color: #e0e0e0; word-break: break-all; text-align: right; max-width: 70%; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .badge-queued, .badge-pending   { background: #37474f; color: #b0bec5; }
+    .badge-processing               { background: #1565c0; color: #bbdefb; }
+    .badge-completed                { background: #1b5e20; color: #a5d6a7; }
+    .badge-failed                   { background: #b71c1c; color: #ef9a9a; }
+
+    #result-image-wrap {
+      display: none;
+      text-align: center;
+      margin-top: 16px;
+    }
+    #result-image {
+      max-width: 100%;
+      border-radius: 8px;
+      border: 1px solid #2a2d3a;
+      margin-bottom: 10px;
+    }
+    .download-link {
+      display: inline-block;
+      padding: 8px 24px;
+      background: #263238;
+      color: #90caf9;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+      transition: background 0.15s;
+    }
+    .download-link:hover { background: #37474f; }
+
+    /* ---- Error ---- */
+    #error-msg {
+      display: none;
+      background: #310000;
+      border: 1px solid #b71c1c;
+      border-radius: 6px;
+      color: #ef9a9a;
+      padding: 10px 14px;
+      font-size: 0.9rem;
+      margin-top: 12px;
+    }
+
+    /* ---- Note ---- */
+    .note {
+      font-size: 0.8rem;
+      color: #757575;
+      margin-top: -12px;
+      margin-bottom: 16px;
+    }
+
+    /* ---- Hidden panel ---- */
+    .panel { display: none; }
+    .panel.active { display: block; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🌉 Gembridge WebUI</h1>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="t2i">T2I</button>
+      <button class="tab-btn" data-tab="i2i">I2I</button>
+      <button class="tab-btn" data-tab="multimodal">Multimodal</button>
+    </div>
+
+    <!-- T2I panel -->
+    <div id="panel-t2i" class="card panel active">
+      <div class="field-group">
+        <label for="t2i-prompt">プロンプト</label>
+        <textarea id="t2i-prompt" rows="4" placeholder="例: cybergirl, 8k, best quality"></textarea>
+      </div>
+      <div class="field-group">
+        <label for="t2i-mode">モード</label>
+        <select id="t2i-mode">
+          <option value="high-speed">high-speed（高速）</option>
+          <option value="thinking">thinking（思考）</option>
+          <option value="pro">pro</option>
+        </select>
+      </div>
+      <button class="btn-primary" id="t2i-submit">生成する</button>
+    </div>
+
+    <!-- I2I panel -->
+    <div id="panel-i2i" class="card panel">
+      <div class="field-group">
+        <label for="i2i-prompt">プロンプト</label>
+        <textarea id="i2i-prompt" rows="4" placeholder="例: wearing kimono"></textarea>
+      </div>
+      <div class="field-group">
+        <label for="i2i-mode">モード</label>
+        <select id="i2i-mode">
+          <option value="high-speed">high-speed（高速）</option>
+          <option value="thinking">thinking（思考）</option>
+          <option value="pro">pro</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label for="i2i-image">参照画像（必須）</label>
+        <input type="file" id="i2i-image" accept="image/*" />
+        <p class="note">画像を添付すると「添付の人物と同一性を保ったまま画像を生成してください」という指示が自動追加されます。</p>
+      </div>
+      <button class="btn-primary" id="i2i-submit">生成する</button>
+    </div>
+
+    <!-- Multimodal panel -->
+    <div id="panel-multimodal" class="card panel">
+      <div class="field-group">
+        <label for="mm-prompt">プロンプト</label>
+        <textarea id="mm-prompt" rows="4" placeholder="例: Describe this image and improve it"></textarea>
+      </div>
+      <div class="field-group">
+        <label for="mm-mode">モード</label>
+        <select id="mm-mode">
+          <option value="high-speed">high-speed（高速）</option>
+          <option value="thinking">thinking（思考）</option>
+          <option value="pro">pro</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label for="mm-image">参照画像（任意）</label>
+        <input type="file" id="mm-image" accept="image/*" />
+      </div>
+      <button class="btn-primary" id="mm-submit">生成する</button>
+    </div>
+
+    <!-- Status section -->
+    <div id="status-section" class="card">
+      <div class="status-row">
+        <span class="status-label">Job ID</span>
+        <span class="status-value" id="disp-job-id">—</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">ステータス</span>
+        <span class="status-value" id="disp-status"><span class="badge badge-queued">queued</span></span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">詳細</span>
+        <span class="status-value" id="disp-detailed">—</span>
+      </div>
+
+      <!-- Result image -->
+      <div id="result-image-wrap">
+        <img id="result-image" src="" alt="生成された画像" />
+        <br />
+        <a id="download-link" class="download-link" href="#" download="result.png">⬇ ダウンロード</a>
+      </div>
+    </div>
+
+    <!-- Error message -->
+    <div id="error-msg"></div>
+  </div>
+
+  <script>
+    // ---- Tab switching ----
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const panels = document.querySelectorAll('.panel');
+    tabBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        tabBtns.forEach(b => b.classList.remove('active'));
+        panels.forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    // ---- Utilities ----
+    function showError(msg) {
+      const el = document.getElementById('error-msg');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+    function clearError() {
+      const el = document.getElementById('error-msg');
+      el.style.display = 'none';
+      el.textContent = '';
+    }
+
+    function badgeClass(status) {
+      const map = { queued: 'badge-queued', pending: 'badge-pending', processing: 'badge-processing', completed: 'badge-completed', failed: 'badge-failed' };
+      return 'badge ' + (map[status] || 'badge-queued');
+    }
+
+    function updateStatusUI(data) {
+      document.getElementById('disp-job-id').textContent = data.id || data.job_id || '—';
+      const badge = `<span class="${badgeClass(data.status)}">${data.status || '—'}</span>`;
+      document.getElementById('disp-status').innerHTML = badge;
+      document.getElementById('disp-detailed').textContent = data.detailed_status || '—';
+
+      if (data.status === 'completed' && data.image) {
+        const src = 'data:image/png;base64,' + data.image;
+        document.getElementById('result-image').src = src;
+        document.getElementById('download-link').href = src;
+        document.getElementById('result-image-wrap').style.display = 'block';
+      }
+    }
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          // data URL プレフィックスを除去（例: 'data:image/png;base64,'）
+          const base64 = reader.result.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    let pollingTimer = null;
+
+    function startPolling(jobId) {
+      clearInterval(pollingTimer);
+      pollingTimer = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/job?job_id=${encodeURIComponent(jobId)}&t=${Date.now()}`);
+          if (!res.ok) { clearInterval(pollingTimer); showError('ステータス取得に失敗しました (HTTP ' + res.status + ')'); return; }
+          const data = await res.json();
+          updateStatusUI(data);
+
+          if (data.status === 'completed' || data.status === 'failed') {
+            clearInterval(pollingTimer);
+            if (data.status === 'failed') {
+              showError('ジョブが失敗しました: ' + (data.detailed_status || data.error || '不明なエラー'));
+            }
+            // Re-enable submit buttons
+            document.querySelectorAll('.btn-primary').forEach(b => b.disabled = false);
+          }
+        } catch (e) {
+          // ネットワークエラーはポーリングを継続（次のインターバルで再試行）
+          console.warn('ステータス取得に失敗しました:', e);
+        }
+      }, 3000);
+    }
+
+    async function submitJob(prompt, mode, imageFile) {
+      clearError();
+      document.getElementById('result-image-wrap').style.display = 'none';
+      document.getElementById('status-section').style.display = 'block';
+      document.querySelectorAll('.btn-primary').forEach(b => b.disabled = true);
+
+      const body = { prompt, mode };
+      if (imageFile) {
+        body.image_data = await fileToBase64(imageFile);
+      }
+
+      try {
+        const res = await fetch('/api/job', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || 'HTTP ' + res.status);
+        }
+        const data = await res.json();
+        const jobId = data.job_id;
+
+        // Show initial state
+        updateStatusUI({ id: jobId, status: data.status, detailed_status: 'Queued' });
+        startPolling(jobId);
+      } catch (e) {
+        showError('ジョブ送信に失敗しました: ' + e.message);
+        document.querySelectorAll('.btn-primary').forEach(b => b.disabled = false);
+      }
+    }
+
+    // ---- T2I ----
+    document.getElementById('t2i-submit').addEventListener('click', async () => {
+      const prompt = document.getElementById('t2i-prompt').value.trim();
+      if (!prompt) { showError('プロンプトを入力してください'); return; }
+      const mode = document.getElementById('t2i-mode').value;
+      await submitJob(prompt, mode, null);
+    });
+
+    // ---- I2I ----
+    document.getElementById('i2i-submit').addEventListener('click', async () => {
+      const prompt = document.getElementById('i2i-prompt').value.trim();
+      if (!prompt) { showError('プロンプトを入力してください'); return; }
+      const imageFile = document.getElementById('i2i-image').files[0];
+      if (!imageFile) { showError('I2I モードでは参照画像が必須です'); return; }
+      const mode = document.getElementById('i2i-mode').value;
+      await submitJob(prompt, mode, imageFile);
+    });
+
+    // ---- Multimodal ----
+    document.getElementById('mm-submit').addEventListener('click', async () => {
+      const prompt = document.getElementById('mm-prompt').value.trim();
+      if (!prompt) { showError('プロンプトを入力してください'); return; }
+      const imageFile = document.getElementById('mm-image').files[0] || null;
+      const mode = document.getElementById('mm-mode').value;
+      await submitJob(prompt, mode, imageFile);
+    });
+  </script>
+</body>
+</html>
