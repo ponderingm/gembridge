@@ -7,16 +7,57 @@ Raspberry Pi上のDockerコンテナ群として動作する「自律型Gemini�
 
 - **gemini-api**: FastAPIサーバー。ジョブ管理とDiscord通知を担当。
 - **gemini-browser**: Chromiumブラウザ + KasmVNC。TampermonkeyスクリプトでGeminiを操作。
+- **gemini-discord-bot**: Discordスラッシュコマンドで画像生成を呼び出すボット。
+
+## 🤖 Discord Bot
+
+Discord Bot を使うと、Discordチャンネルから直接スラッシュコマンドで画像生成を依頼できます。
+
+### コマンド一覧
+
+| コマンド | 説明 |
+|---|---|
+| `/t2i prompt:[テキスト] [mode]` | テキストから画像を生成 (Text to Image) |
+| `/i2i prompt:[テキスト] image:[添付] [mode]` | 参照画像を添付してキャラクターの同一性を保った画像生成 (Image to Image) |
+| `/multimodal prompt:[テキスト] [image:[添付]] [mode]` | テキストと任意の参照画像を組み合わせたマルチモーダル生成 |
+
+**`mode` の選択肢:**
+- `高速モード (high-speed)` — デフォルト。素早い生成。
+- `思考モード (thinking)` — より高品質。時間がかかる場合あり。
+- `プロモード (pro)` — 高度なモデルを使用。
+
+### Discord Bot の初期設定
+
+1. [Discord Developer Portal](https://discord.com/developers/applications) でアプリケーションを作成します。
+2. **Bot** タブでトークンを発行し、以下の権限 (Scopes) を付与してください:
+   - `bot`, `applications.commands`
+   - Bot Permissions: `Send Messages`, `Attach Files`, `Use Slash Commands`
+3. Bot をサーバーに招待します。
+4. `.env` に以下を追加します:
+   ```
+   DISCORD_BOT_TOKEN=<取得したトークン>
+   ```
+5. `docker compose up -d --build gemini-discord-bot` でボットを起動します。
+
+### ボットの使用例
+
+```
+/t2i prompt:サイバーパンクな女の子、8k、最高品質 mode:高速モード
+/i2i prompt:kimono を着せる image:[参照画像を添付] mode:高速モード
+/multimodal prompt:宇宙を旅する astronaut image:[任意の参照画像]
+```
+
+生成が完了すると、同じチャンネルに画像が投稿されます。
 
 ## セットアップ手順
 
 ### 1. 環境設定
 
-`.env` ファイルを編集し、Discord Webhook URLを設定してください。
+`.env` ファイルを編集し、Discord Webhook URL と Bot トークンを設定してください。
 
 ```bash
 cp .env.example .env
-# .env を編集して DISCORD_WEBHOOK_URL を設定
+# .env を編集して DISCORD_WEBHOOK_URL と DISCORD_BOT_TOKEN を設定
 ```
 
 ### 2. コンテナ起動

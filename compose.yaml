@@ -30,6 +30,17 @@ services:
     depends_on:
       - gemini-api
 
+  gemini-discord-bot:
+    build: ./discord_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - TZ=${TZ:-Asia/Tokyo}
+      - GEMBRIDGE_API_URL=http://gemini-api:8000/api
+    depends_on:
+      - gemini-api
+
 volumes:
   gembridge_data:
   gembridge_browser_config:
