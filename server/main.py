@@ -24,7 +24,12 @@ DATA_DIR = os.getenv("DATA_DIR", "/app/data")
 IMAGES_DIR = os.path.join(DATA_DIR, "images")
 
 # Ensure directories exist
-os.makedirs(IMAGES_DIR, exist_ok=True)
+try:
+    os.makedirs(IMAGES_DIR, exist_ok=True)
+except PermissionError:
+    DATA_DIR = "/tmp/gembridge-data"
+    IMAGES_DIR = os.path.join(DATA_DIR, "images")
+    os.makedirs(IMAGES_DIR, exist_ok=True)
 
 # Mount static files
 app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
@@ -93,6 +98,8 @@ def build_gemini_prompt(messages: List[ChatMessage]) -> str:
                 status_code=400,
                 detail=f"Unsupported role: '{message.role}'. Allowed roles: system, user, assistant"
             )
+        if not message.content.strip():
+            raise HTTPException(status_code=400, detail="message content must be non-empty")
         prompt_lines.append(f"{role}: {message.content}")
     return "\n\n".join(prompt_lines)
 
@@ -106,9 +113,9 @@ def run_gemini_cli(prompt: str, model: Optional[str]) -> str:
         timeout_seconds = 120
 
     if "\x00" in prompt:
-        raise HTTPException(status_code=400, detail="Invalid prompt content")
+        raise HTTPException(status_code=400, detail="prompt contains null byte (\\x00)")
     if model and "\x00" in model:
-        raise HTTPException(status_code=400, detail="Invalid model value")
+        raise HTTPException(status_code=400, detail="model contains null byte (\\x00)")
 
     command = shlex.split(gemini_cli_command) + ["-p", prompt]
     if model:

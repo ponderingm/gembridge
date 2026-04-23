@@ -1,12 +1,9 @@
 import asyncio
-import os
 import subprocess
 import unittest
 from unittest.mock import patch
 
 from fastapi import HTTPException
-
-os.environ["DATA_DIR"] = "/tmp/gembridge-test-data"
 
 from main import ChatCompletionsRequest, create_chat_completion
 
