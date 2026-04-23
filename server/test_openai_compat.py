@@ -1,11 +1,12 @@
 import asyncio
+import os
 import subprocess
 import unittest
 from unittest.mock import patch
 
 from fastapi import HTTPException
 
-from main import ChatCompletionsRequest, create_chat_completion
+from main import ChatCompletionsRequest, create_chat_completion, run_gemini_cli
 
 
 class OpenAICompatApiTest(unittest.TestCase):
@@ -59,6 +60,37 @@ class OpenAICompatApiTest(unittest.TestCase):
             asyncio.run(create_chat_completion(request))
 
         self.assertEqual(context.exception.status_code, 504)
+
+    def test_chat_completions_returns_400_for_unsupported_role(self):
+        request = ChatCompletionsRequest(messages=[{"role": "tool", "content": "test"}])
+        with self.assertRaises(HTTPException) as context:
+            asyncio.run(create_chat_completion(request))
+        self.assertEqual(context.exception.status_code, 400)
+
+    def test_chat_completions_returns_400_for_empty_content(self):
+        request = ChatCompletionsRequest(messages=[{"role": "user", "content": "   "}])
+        with self.assertRaises(HTTPException) as context:
+            asyncio.run(create_chat_completion(request))
+        self.assertEqual(context.exception.status_code, 400)
+
+    def test_run_gemini_cli_returns_400_when_prompt_contains_null_byte(self):
+        with self.assertRaises(HTTPException) as context:
+            run_gemini_cli("abc\x00def", None)
+        self.assertEqual(context.exception.status_code, 400)
+
+    @patch("main.subprocess.run")
+    def test_run_gemini_cli_uses_default_timeout_when_env_is_invalid(self, mock_run):
+        mock_run.return_value = subprocess.CompletedProcess(args=["gemini"], returncode=0, stdout="ok", stderr="")
+        with patch.dict(os.environ, {"GEMINI_CLI_TIMEOUT_SECONDS": "abc"}, clear=False):
+            run_gemini_cli("prompt", None)
+        self.assertEqual(mock_run.call_args.kwargs["timeout"], 120)
+
+    @patch("main.subprocess.run")
+    def test_run_gemini_cli_uses_default_timeout_when_env_is_non_positive(self, mock_run):
+        mock_run.return_value = subprocess.CompletedProcess(args=["gemini"], returncode=0, stdout="ok", stderr="")
+        with patch.dict(os.environ, {"GEMINI_CLI_TIMEOUT_SECONDS": "-1"}, clear=False):
+            run_gemini_cli("prompt", None)
+        self.assertEqual(mock_run.call_args.kwargs["timeout"], 120)
 
 
 if __name__ == "__main__":

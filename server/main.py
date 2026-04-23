@@ -27,9 +27,14 @@ IMAGES_DIR = os.path.join(DATA_DIR, "images")
 try:
     os.makedirs(IMAGES_DIR, exist_ok=True)
 except PermissionError:
+    logger.warning("Falling back DATA_DIR to /tmp/gembridge-data due to permission issue")
     DATA_DIR = "/tmp/gembridge-data"
     IMAGES_DIR = os.path.join(DATA_DIR, "images")
-    os.makedirs(IMAGES_DIR, exist_ok=True)
+    try:
+        os.makedirs(IMAGES_DIR, exist_ok=True)
+    except OSError as e:
+        logger.error(f"Failed to initialize image directory: {e}")
+        raise
 
 # Mount static files
 app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
@@ -117,7 +122,11 @@ def run_gemini_cli(prompt: str, model: Optional[str]) -> str:
     if model and "\x00" in model:
         raise HTTPException(status_code=400, detail="model に null バイト (\\x00) が含まれています")
 
-    command = shlex.split(gemini_cli_command) + ["-p", prompt]
+    command_base = shlex.split(gemini_cli_command)
+    if not command_base:
+        raise HTTPException(status_code=500, detail="GEMINI_CLI_COMMAND が空です")
+
+    command = command_base + ["-p", prompt]
     if model:
         command.extend(["-m", model])
     result = subprocess.run(command, capture_output=True, text=True, timeout=timeout_seconds, check=True)
@@ -141,8 +150,7 @@ async def create_chat_completion(request: ChatCompletionsRequest):
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="Gemini CLI の実行がタイムアウトしました")
     except subprocess.CalledProcessError as e:
-        error_message = (e.stderr or str(e)).strip()
-        logger.error(f"Gemini CLI failed: {error_message}")
+        logger.error(f"Gemini CLI failed with return code: {e.returncode}")
         raise HTTPException(status_code=502, detail="Gemini CLI の実行に失敗しました")
 
     now_unix = int(datetime.now().timestamp())
