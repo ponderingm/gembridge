@@ -96,10 +96,10 @@ def build_gemini_prompt(messages: List[ChatMessage]) -> str:
         if role not in {"system", "user", "assistant"}:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unsupported role: '{message.role}'. Allowed roles: system, user, assistant"
+                detail=f"サポートされていない role: '{message.role}'。許可値: system, user, assistant"
             )
         if not message.content.strip():
-            raise HTTPException(status_code=400, detail="message content must be non-empty")
+            raise HTTPException(status_code=400, detail="message の content は空にできません")
         prompt_lines.append(f"{role}: {message.content}")
     return "\n\n".join(prompt_lines)
 
@@ -113,9 +113,9 @@ def run_gemini_cli(prompt: str, model: Optional[str]) -> str:
         timeout_seconds = 120
 
     if "\x00" in prompt:
-        raise HTTPException(status_code=400, detail="prompt contains null byte (\\x00)")
+        raise HTTPException(status_code=400, detail="prompt に null バイト (\\x00) が含まれています")
     if model and "\x00" in model:
-        raise HTTPException(status_code=400, detail="model contains null byte (\\x00)")
+        raise HTTPException(status_code=400, detail="model に null バイト (\\x00) が含まれています")
 
     command = shlex.split(gemini_cli_command) + ["-p", prompt]
     if model:
@@ -126,24 +126,24 @@ def run_gemini_cli(prompt: str, model: Optional[str]) -> str:
 @app.post("/v1/chat/completions")
 async def create_chat_completion(request: ChatCompletionsRequest):
     if request.stream:
-        raise HTTPException(status_code=400, detail="stream=true is not supported")
+        raise HTTPException(status_code=400, detail="stream=true はサポートしていません")
     if not request.messages:
-        raise HTTPException(status_code=400, detail="messages is required")
+        raise HTTPException(status_code=400, detail="messages は必須です")
 
     prompt = build_gemini_prompt(request.messages)
     if not prompt.strip():
-        raise HTTPException(status_code=400, detail="messages must include non-empty content")
+        raise HTTPException(status_code=400, detail="messages には空でない content が必要です")
 
     try:
         output_text = run_gemini_cli(prompt, request.model)
     except FileNotFoundError:
-        raise HTTPException(status_code=503, detail="Gemini CLI command not found")
+        raise HTTPException(status_code=503, detail="Gemini CLI コマンドが見つかりません")
     except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="Gemini CLI execution timed out")
+        raise HTTPException(status_code=504, detail="Gemini CLI の実行がタイムアウトしました")
     except subprocess.CalledProcessError as e:
         error_message = (e.stderr or str(e)).strip()
         logger.error(f"Gemini CLI failed: {error_message}")
-        raise HTTPException(status_code=502, detail="Gemini CLI failed")
+        raise HTTPException(status_code=502, detail="Gemini CLI の実行に失敗しました")
 
     now_unix = int(datetime.now().timestamp())
     response_model = request.model or "gemini"

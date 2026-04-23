@@ -38,7 +38,7 @@ class OpenAICompatApiTest(unittest.TestCase):
             asyncio.run(create_chat_completion(request))
 
         self.assertEqual(context.exception.status_code, 502)
-        self.assertEqual(context.exception.detail, "Gemini CLI failed")
+        self.assertEqual(context.exception.detail, "Gemini CLI の実行に失敗しました")
 
     @patch("main.run_gemini_cli")
     def test_chat_completions_returns_503_when_cli_not_found(self, mock_run_gemini_cli):
