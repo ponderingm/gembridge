@@ -41,7 +41,27 @@ class OpenAICompatApiTest(unittest.TestCase):
             asyncio.run(create_chat_completion(request))
 
         self.assertEqual(context.exception.status_code, 502)
-        self.assertIn("Gemini CLI failed", context.exception.detail)
+        self.assertEqual(context.exception.detail, "Gemini CLI failed")
+
+    @patch("main.run_gemini_cli")
+    def test_chat_completions_returns_503_when_cli_not_found(self, mock_run_gemini_cli):
+        mock_run_gemini_cli.side_effect = FileNotFoundError()
+        request = ChatCompletionsRequest(messages=[{"role": "user", "content": "test"}])
+
+        with self.assertRaises(HTTPException) as context:
+            asyncio.run(create_chat_completion(request))
+
+        self.assertEqual(context.exception.status_code, 503)
+
+    @patch("main.run_gemini_cli")
+    def test_chat_completions_returns_504_when_cli_times_out(self, mock_run_gemini_cli):
+        mock_run_gemini_cli.side_effect = subprocess.TimeoutExpired(cmd=["gemini"], timeout=120)
+        request = ChatCompletionsRequest(messages=[{"role": "user", "content": "test"}])
+
+        with self.assertRaises(HTTPException) as context:
+            asyncio.run(create_chat_completion(request))
+
+        self.assertEqual(context.exception.status_code, 504)
 
 
 if __name__ == "__main__":

@@ -89,13 +89,27 @@ def build_gemini_prompt(messages: List[ChatMessage]) -> str:
     for message in messages:
         role = message.role.strip().lower()
         if role not in {"system", "user", "assistant"}:
-            raise HTTPException(status_code=400, detail=f"Unsupported role: {message.role}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported role: '{message.role}'. Allowed roles: system, user, assistant"
+            )
         prompt_lines.append(f"{role}: {message.content}")
     return "\n\n".join(prompt_lines)
 
 def run_gemini_cli(prompt: str, model: Optional[str]) -> str:
     gemini_cli_command = os.getenv("GEMINI_CLI_COMMAND", "gemini")
-    timeout_seconds = int(os.getenv("GEMINI_CLI_TIMEOUT_SECONDS", "120"))
+    try:
+        timeout_seconds = int(os.getenv("GEMINI_CLI_TIMEOUT_SECONDS", "120"))
+    except ValueError:
+        timeout_seconds = 120
+    if timeout_seconds <= 0:
+        timeout_seconds = 120
+
+    if "\x00" in prompt:
+        raise HTTPException(status_code=400, detail="Invalid prompt content")
+    if model and "\x00" in model:
+        raise HTTPException(status_code=400, detail="Invalid model value")
+
     command = shlex.split(gemini_cli_command) + ["-p", prompt]
     if model:
         command.extend(["-m", model])
@@ -110,6 +124,8 @@ async def create_chat_completion(request: ChatCompletionsRequest):
         raise HTTPException(status_code=400, detail="messages is required")
 
     prompt = build_gemini_prompt(request.messages)
+    if not prompt.strip():
+        raise HTTPException(status_code=400, detail="messages must include non-empty content")
 
     try:
         output_text = run_gemini_cli(prompt, request.model)
@@ -119,7 +135,8 @@ async def create_chat_completion(request: ChatCompletionsRequest):
         raise HTTPException(status_code=504, detail="Gemini CLI execution timed out")
     except subprocess.CalledProcessError as e:
         error_message = (e.stderr or str(e)).strip()
-        raise HTTPException(status_code=502, detail=f"Gemini CLI failed: {error_message}")
+        logger.error(f"Gemini CLI failed: {error_message}")
+        raise HTTPException(status_code=502, detail="Gemini CLI failed")
 
     now_unix = int(datetime.now().timestamp())
     response_model = request.model or "gemini"
