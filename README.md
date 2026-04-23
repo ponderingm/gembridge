@@ -130,6 +130,47 @@ Access the API using the service name `gemini-api` on port `8000`.
 ```
 *Note: The `image` field contains the full Base64 string of the generated PNG, allowing you to retrieve the image directly without a second request.*
 
+#### OpenAI API 互換 (Gemini CLI ラッパー)
+`POST /v1/chat/completions`
+`Content-Type: application/json`
+
+Gemini CLI の non-interactive モード（`gemini -p`）を呼び出します。
+
+**リクエスト例:**
+```json
+{
+  "model": "gemini-2.5-flash",
+  "messages": [
+    {"role": "system", "content": "You are helpful"},
+    {"role": "user", "content": "Explain this project"}
+  ]
+}
+```
+
+**レスポンス例:**
+```json
+{
+  "id": "chatcmpl-1733900000",
+  "object": "chat.completion",
+  "created": 1733900000,
+  "model": "gemini-2.5-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "..."
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}
+```
+
+**環境変数:**
+- `GEMINI_CLI_COMMAND` (default: `gemini`)
+- `GEMINI_CLI_TIMEOUT_SECONDS` (default: `120`)
+
 ### 3. Integration Example (Python)
 **Best Practice:** Do not hardcode the URL. Use an Environment Variable.
 

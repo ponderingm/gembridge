@@ -2,6 +2,8 @@ import os
 import logging
 import base64
 import shutil
+import shlex
+import subprocess
 import requests
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, BackgroundTasks
@@ -18,7 +20,7 @@ app = FastAPI()
 
 # Configuration
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
-DATA_DIR = "/app/data"
+DATA_DIR = os.getenv("DATA_DIR", "/app/data")
 IMAGES_DIR = os.path.join(DATA_DIR, "images")
 
 # Ensure directories exist
@@ -53,6 +55,15 @@ class ErrorReport(BaseModel):
     url: Optional[str] = None
     job_id: Optional[str] = None
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatCompletionsRequest(BaseModel):
+    model: Optional[str] = None
+    messages: List[ChatMessage]
+    stream: Optional[bool] = False
+
 def send_discord_notification(content: str, file_path: Optional[str] = None):
     if not DISCORD_WEBHOOK_URL:
         logger.warning("DISCORD_WEBHOOK_URL is not set. Skipping notification.")
@@ -72,6 +83,62 @@ def send_discord_notification(content: str, file_path: Optional[str] = None):
         logger.info("Discord notification sent successfully.")
     except Exception as e:
         logger.error(f"Failed to send Discord notification: {e}")
+
+def build_gemini_prompt(messages: List[ChatMessage]) -> str:
+    prompt_lines = []
+    for message in messages:
+        role = message.role.strip().lower()
+        if role not in {"system", "user", "assistant"}:
+            raise HTTPException(status_code=400, detail=f"Unsupported role: {message.role}")
+        prompt_lines.append(f"{role}: {message.content}")
+    return "\n\n".join(prompt_lines)
+
+def run_gemini_cli(prompt: str, model: Optional[str]) -> str:
+    gemini_cli_command = os.getenv("GEMINI_CLI_COMMAND", "gemini")
+    timeout_seconds = int(os.getenv("GEMINI_CLI_TIMEOUT_SECONDS", "120"))
+    command = shlex.split(gemini_cli_command) + ["-p", prompt]
+    if model:
+        command.extend(["-m", model])
+    result = subprocess.run(command, capture_output=True, text=True, timeout=timeout_seconds, check=True)
+    return result.stdout.strip()
+
+@app.post("/v1/chat/completions")
+async def create_chat_completion(request: ChatCompletionsRequest):
+    if request.stream:
+        raise HTTPException(status_code=400, detail="stream=true is not supported")
+    if not request.messages:
+        raise HTTPException(status_code=400, detail="messages is required")
+
+    prompt = build_gemini_prompt(request.messages)
+
+    try:
+        output_text = run_gemini_cli(prompt, request.model)
+    except FileNotFoundError:
+        raise HTTPException(status_code=503, detail="Gemini CLI command not found")
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Gemini CLI execution timed out")
+    except subprocess.CalledProcessError as e:
+        error_message = (e.stderr or str(e)).strip()
+        raise HTTPException(status_code=502, detail=f"Gemini CLI failed: {error_message}")
+
+    now_unix = int(datetime.now().timestamp())
+    response_model = request.model or "gemini"
+    return {
+        "id": f"chatcmpl-{now_unix}",
+        "object": "chat.completion",
+        "created": now_unix,
+        "model": response_model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": output_text
+                },
+                "finish_reason": "stop"
+            }
+        ]
+    }
 
 @app.post("/api/job")
 async def create_job(job: JobRequest):
